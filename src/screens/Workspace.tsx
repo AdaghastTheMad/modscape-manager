@@ -7,6 +7,7 @@ import { ModIcon, SourceBadge } from "../components/kit";
 import { Browse } from "./workspace/Browse";
 import { Details, type Selection } from "./workspace/Details";
 import { PackList } from "./workspace/PackList";
+import { ExportDialog } from "./workspace/ExportDialog";
 import { SuggestionPicker } from "./workspace/Suggestions";
 
 type AddNotice = { title: string; lines: string[]; suggestions: Suggestion[]; tone: "ok" | "warn" | "error" };
@@ -24,6 +25,7 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
   const [orphanPrompt, setOrphanPrompt] = useState<{ keys: string[]; orphans: string[]; picked: Set<string> } | null>(null);
   const [matchReview, setMatchReview] = useState<{ results: EntryMatches[]; picked: Map<string, Candidate> } | null>(null);
   const [matching, setMatching] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const dirty = useRef(false);
   const latest = useRef<Pack | null>(null);
@@ -328,7 +330,7 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
         <span className={saveState === "error" ? "err" : "muted"} style={{ fontSize: 12 }} aria-live="polite">
           {saveState === "saved" ? "All changes saved" : saveState === "pending" ? "Saving…" : "Save failed"}
         </span>
-        <Button size="small" onClick={async () => { await flush(); try { await api.exportProject(latest.current!); } catch (e) { setError(e as AppError); } }}>Save as file…</Button>
+        <Button size="small" variant="primary" onClick={async () => { await flush(); setExporting(true); }}>Export…</Button>
       </div>
       {error && <div className="row"><div className="grow"><ErrorNotice error={error} /></div><Button size="small" onClick={() => setError(null)}>Dismiss</Button></div>}
       <div className="workspace">
@@ -344,6 +346,11 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {exporting && (
+        <ExportDialog pack={pack} onClose={() => setExporting(false)}
+          onFixes={(fixes) => fixes.forEach(applyFix)}
+          onSaveProject={async () => { await flush(); try { await api.exportProject(latest.current!); } catch (e) { setError(e as AppError); } }} />
+      )}
       {matchReview && (
         <Modal title="Copies on the other site" width={640} onClose={() => setMatchReview(null)}>
           <div className="stack-lg">

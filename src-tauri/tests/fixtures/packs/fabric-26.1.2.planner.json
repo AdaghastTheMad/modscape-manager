@@ -1,0 +1,1421 @@
+{
+  "format": "modpack-planner-project",
+  "schemaVersion": 1,
+  "appVersion": "0.1.0",
+  "exportedAt": "2026-11-24T07:47:00Z",
+  "pack": {
+    "id": "fixture-26.1.2-fabric",
+    "name": "Fixture Fabric 26.1.2",
+    "mcVersion": "26.1.2",
+    "loader": "fabric",
+    "loaderVersion": "0.20.1",
+    "sourcePreference": "modrinth",
+    "channelPolicy": "stable",
+    "entries": {
+      "e0001": {
+        "ref": {
+          "modrinthId": "P7dR8mSH",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0004",
+          "e0007",
+          "e0011",
+          "e0013",
+          "e0015",
+          "e0018",
+          "e0019",
+          "e0020",
+          "e0021",
+          "e0024",
+          "e0025",
+          "e0026",
+          "e0028",
+          "e0031",
+          "e0034",
+          "e0035",
+          "e0037",
+          "e0038",
+          "e0039",
+          "e0040",
+          "e0041",
+          "e0042",
+          "e0043",
+          "e0044",
+          "e0046",
+          "e0048",
+          "e0049"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Fabric API",
+          "slug": "fabric-api",
+          "summary": "Lightweight and modular API providing common hooks and intercompatibility measures utilized by mods using the Fabric toolchain.",
+          "iconUrl": "https://cdn.modrinth.com/data/P7dR8mSH/icon.png",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "Apache-2.0",
+          "updated": "2026-11-23T13:41:39.209222Z",
+          "downloads": 291578799
+        },
+        "addedAt": "2026-11-24T07:46:50Z"
+      },
+      "e0002": {
+        "ref": {
+          "modrinthId": "AANobbMI",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0003",
+          "e0016",
+          "e0022"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Sodium",
+          "slug": "sodium",
+          "summary": "A high-performance rendering engine replacement for Minecraft, which greatly improves frame rates and reduces micro-stutter.",
+          "iconUrl": "https://cdn.modrinth.com/data/AANobbMI/295862f4724dc3f78df3447ad6072b2dcd3ef0c9_96.webp",
+          "categories": [
+            "optimization"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LicenseRef-Polyform-Shield-1.0.0",
+          "updated": "2026-11-23T02:14:03.524022Z",
+          "downloads": 256134210
+        },
+        "addedAt": "2026-11-24T07:46:50Z"
+      },
+      "e0003": {
+        "ref": {
+          "modrinthId": "YL57xq9U",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Iris Shaders",
+          "slug": "iris",
+          "summary": "A modern shader pack loader for Minecraft intended to be compatible with existing OptiFine shader packs",
+          "iconUrl": "https://cdn.modrinth.com/data/YL57xq9U/18d0e7f076d3d6ed5bedd472b853909aac5da202_96.webp",
+          "categories": [
+            "decoration",
+            "optimization"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-09-30T02:58:24.095409Z",
+          "downloads": 197356248
+        },
+        "addedAt": "2026-11-24T07:46:50Z"
+      },
+      "e0004": {
+        "ref": {
+          "modrinthId": "NNAgCjsB",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Entity Culling",
+          "slug": "entityculling",
+          "summary": "Using async path-tracing to hide Block-/Entities that are not visible",
+          "iconUrl": "https://cdn.modrinth.com/data/NNAgCjsB/7873452d6cede4daed12da3d7d8c193ab88b4fd6_96.webp",
+          "categories": [
+            "optimization"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LicenseRef-tr7zw-Protective-License",
+          "updated": "2026-11-22T14:40:15.315447Z",
+          "downloads": 192300125
+        },
+        "addedAt": "2026-11-24T07:46:50Z"
+      },
+      "e0005": {
+        "ref": {
+          "modrinthId": "9s6osm5g",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0030"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Cloth Config API",
+          "slug": "cloth-config",
+          "summary": "Configuration Library for Minecraft Mods",
+          "iconUrl": "https://cdn.modrinth.com/data/9s6osm5g/ed8a2316cbb6f4fc5f510e8e13a59a85cbbbff4d_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-09-23T07:00:51.350542Z",
+          "downloads": 188593738
+        },
+        "addedAt": "2026-11-24T07:46:50Z"
+      },
+      "e0006": {
+        "ref": {
+          "modrinthId": "uXXizFIs",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "FerriteCore",
+          "slug": "ferrite-core",
+          "summary": "Memory usage optimizations",
+          "iconUrl": "https://cdn.modrinth.com/data/uXXizFIs/222a126f26f8f9ae1eb339f3b767677f18bff31f_96.webp",
+          "categories": [
+            "optimization",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "MIT",
+          "updated": "2026-03-24T18:31:50.491773Z",
+          "downloads": 170067778
+        },
+        "addedAt": "2026-11-24T07:46:51Z"
+      },
+      "e0007": {
+        "ref": {
+          "modrinthId": "mOgUt4GM",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Mod Menu",
+          "slug": "modmenu",
+          "summary": "Adds a mod menu to view the list of mods you have installed.",
+          "iconUrl": "https://cdn.modrinth.com/data/mOgUt4GM/5a20ed1450a0e1e79a1fe04e61bb4e5878bf1d20.png",
+          "categories": [
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "MIT",
+          "updated": "2026-11-18T06:15:49.391983Z",
+          "downloads": 163629604
+        },
+        "addedAt": "2026-11-24T07:46:51Z"
+      },
+      "e0008": {
+        "ref": {
+          "modrinthId": "eXts2L7r",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "dependency",
+        "pulledInBy": [
+          "e0007"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Text Placeholder API",
+          "slug": "placeholder-api",
+          "summary": "Placeholder and Text manipulation library for your Minecraft mods.",
+          "iconUrl": "https://cdn.modrinth.com/data/eXts2L7r/e9c9990896e6422bffc5f73d2c41b8f077348f83.png",
+          "categories": [
+            "library",
+            "management"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-09-09T09:23:44.714312Z",
+          "downloads": 76851130
+        },
+        "addedAt": "2026-11-24T07:46:51Z"
+      },
+      "e0009": {
+        "ref": {
+          "modrinthId": "gvQqBUqZ",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Lithium",
+          "slug": "lithium",
+          "summary": "No-compromises game logic optimization mod, useful for both single-player games and multi-player servers.",
+          "iconUrl": "https://cdn.modrinth.com/data/gvQqBUqZ/bcc8686c13af0143adf4285d741256af824f70b7_96.webp",
+          "categories": [
+            "optimization"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-11-19T17:19:43.055881Z",
+          "downloads": 146132101
+        },
+        "addedAt": "2026-11-24T07:46:51Z"
+      },
+      "e0010": {
+        "ref": {
+          "modrinthId": "5ZwdcRci",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "ImmediatelyFast",
+          "slug": "immediatelyfast",
+          "summary": "Speed up immediate mode rendering in Minecraft",
+          "iconUrl": "https://cdn.modrinth.com/data/5ZwdcRci/e57b6b451425692ac17ad322d5e14bea686a383a_96.webp",
+          "categories": [
+            "optimization"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-or-later",
+          "updated": "2026-10-13T19:56:39.171283Z",
+          "downloads": 140088152
+        },
+        "addedAt": "2026-11-24T07:46:51Z"
+      },
+      "e0011": {
+        "ref": {
+          "modrinthId": "1eAoo2KR",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "YetAnotherConfigLib (YACL)",
+          "slug": "yacl",
+          "summary": "A builder-based configuration library for Minecraft!",
+          "iconUrl": "https://cdn.modrinth.com/data/1eAoo2KR/08c0cd32515e260f4bb20bbc0696510041523f9a_96.webp",
+          "categories": [
+            "library",
+            "management",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LGPL-3.0-or-later",
+          "updated": "2026-11-03T16:30:21.527927Z",
+          "downloads": 137244847
+        },
+        "addedAt": "2026-11-24T07:46:52Z"
+      },
+      "e0012": {
+        "ref": {
+          "modrinthId": "Ha28R6CL",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0019",
+          "e0028"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Fabric Language Kotlin",
+          "slug": "fabric-language-kotlin",
+          "summary": "This is a mod that enables usage of the Kotlin programming language for Fabric mods.",
+          "iconUrl": "https://cdn.modrinth.com/data/Ha28R6CL/72c3d74aeb665e45aea93a945a01474cbce3b7da_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "Apache-2.0",
+          "updated": "2026-10-09T08:17:15.786208Z",
+          "downloads": 132821308
+        },
+        "addedAt": "2026-11-24T07:46:52Z"
+      },
+      "e0013": {
+        "ref": {
+          "modrinthId": "1bokaNcj",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Xaero's Minimap",
+          "slug": "xaeros-minimap",
+          "summary": "Displays a map of the nearby world terrain, players, mobs, entities in the corner of your screen. Lets you create waypoints which help you find the locations you've marked.",
+          "iconUrl": "https://cdn.modrinth.com/data/1bokaNcj/354080f65407e49f486fcf9c4580e82c45ae63b8_96.webp",
+          "categories": [
+            "adventure",
+            "transportation",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "optional",
+          "license": "LicenseRef-All-Rights-Reserved",
+          "updated": "2026-10-25T15:15:57.326853Z",
+          "downloads": 122023837
+        },
+        "addedAt": "2026-11-24T07:46:52Z"
+      },
+      "e0014": {
+        "ref": {
+          "modrinthId": "BVzZfTc1",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0017"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "[ETF] Entity Texture Features",
+          "slug": "entitytexturefeatures",
+          "summary": "Emissive, Random & Custom texture support for entities in resourcepacks just like Optifine but for Fabric",
+          "iconUrl": "https://cdn.modrinth.com/data/BVzZfTc1/af683d206d50b05258d865b0d6e4aa2f2cee12f2_96.webp",
+          "categories": [
+            "decoration",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-11-03T10:30:25.637230Z",
+          "downloads": 113072194
+        },
+        "addedAt": "2026-11-24T07:46:52Z"
+      },
+      "e0015": {
+        "ref": {
+          "modrinthId": "lhGA9TYQ",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Architectury API",
+          "slug": "architectury-api",
+          "summary": "An intermediary api aimed to ease developing multiplatform mods.",
+          "iconUrl": "https://cdn.modrinth.com/data/lhGA9TYQ/05fe3a61c28faaccaec3533b92e1b321edde7bf6_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "required",
+          "serverSide": "required",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-11-16T17:25:13.227972Z",
+          "downloads": 110110068
+        },
+        "addedAt": "2026-11-24T07:46:52Z"
+      },
+      "e0016": {
+        "ref": {
+          "modrinthId": "PtjYWJkn",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Sodium Extra",
+          "slug": "sodium-extra",
+          "summary": "A Sodium addon that adds features that shouldn't be in Sodium.",
+          "iconUrl": "https://cdn.modrinth.com/data/PtjYWJkn/0df4fb22a11e1dcb5e83cb0aadd275b571aca7a9_96.webp",
+          "categories": [
+            "cursed",
+            "optimization",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-11-23T20:50:46.534070Z",
+          "downloads": 108702374
+        },
+        "addedAt": "2026-11-24T07:46:52Z"
+      },
+      "e0017": {
+        "ref": {
+          "modrinthId": "4I1XuqiY",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "[EMF] Entity Model Features",
+          "slug": "entity-model-features",
+          "summary": "EMF is an, OptiFine format, Custom Entity Model replacement mod available for Fabric and Forge.",
+          "iconUrl": "https://cdn.modrinth.com/data/4I1XuqiY/6e5bbd0d06b1741bfdab6c0cfab6de8fdaf0064c_96.webp",
+          "categories": [
+            "decoration",
+            "mobs",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-10-15T07:13:20.363422Z",
+          "downloads": 107194647
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0018": {
+        "ref": {
+          "modrinthId": "NcUtCpym",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Xaero's World Map",
+          "slug": "xaeros-world-map",
+          "summary": "Adds a full screen world map which shows you what you have explored in the world. Works great together with Xaero's Minimap.",
+          "iconUrl": "https://cdn.modrinth.com/data/NcUtCpym/354080f65407e49f486fcf9c4580e82c45ae63b8_96.webp",
+          "categories": [
+            "adventure",
+            "transportation",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "optional",
+          "license": "LicenseRef-All-Rights-Reserved",
+          "updated": "2026-10-25T15:12:06.115463Z",
+          "downloads": 107179879
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0019": {
+        "ref": {
+          "modrinthId": "OhduvhIc",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0028"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "VeinMiner",
+          "slug": "veinminer",
+          "summary": "Mine the whole vein on mining a single ore/block. Make the tedious mining experience to something satisfying and fun! FTB Ultimine alternative",
+          "iconUrl": "https://cdn.modrinth.com/data/OhduvhIc/5ea1f538e66ee4d4e5e571ad952cba0e06e0bd5c.png",
+          "categories": [
+            "cursed",
+            "equipment",
+            "game-mechanics",
+            "technology",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "required",
+          "license": "AGPL-3.0-only",
+          "updated": "2026-11-14T13:41:15.750332Z",
+          "downloads": 107023590
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0020": {
+        "ref": {
+          "modrinthId": "EsAfCjCV",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "AppleSkin",
+          "slug": "appleskin",
+          "summary": "Food/hunger-related HUD improvements",
+          "iconUrl": "https://cdn.modrinth.com/data/EsAfCjCV/icon.png",
+          "categories": [
+            "food",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "Unlicense",
+          "updated": "2026-09-17T23:59:34.368560Z",
+          "downloads": 100480745
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0021": {
+        "ref": {
+          "modrinthId": "MPCX6s5C",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Not Enough Animations",
+          "slug": "not-enough-animations",
+          "summary": "Bringing first-person animations to the third-person",
+          "iconUrl": "https://cdn.modrinth.com/data/MPCX6s5C/b97fd5f7a893165052408b747286d6eb38d57abb_96.webp",
+          "categories": [
+            "adventure",
+            "decoration"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LicenseRef-tr7zw-Protective-License",
+          "updated": "2026-11-01T15:51:42.259155Z",
+          "downloads": 95817286
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0022": {
+        "ref": {
+          "modrinthId": "Bh37bMuy",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Reese's Sodium Options",
+          "slug": "reeses-sodium-options",
+          "summary": "Alternative Options Menu for Sodium",
+          "iconUrl": "https://cdn.modrinth.com/data/Bh37bMuy/icon.png",
+          "categories": [
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "MIT",
+          "updated": "2026-11-23T20:48:45.714581Z",
+          "downloads": 89851987
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0023": {
+        "ref": {
+          "modrinthId": "u6dRKJwZ",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Just Enough Items (JEI)",
+          "slug": "jei",
+          "summary": "View Items and Recipes",
+          "iconUrl": "https://cdn.modrinth.com/data/u6dRKJwZ/4a3f18ac0d096c9f8e9176984c44be4e58f94c89_96.webp",
+          "categories": [
+            "library",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "MIT",
+          "updated": "2026-11-23T14:02:41.461128Z",
+          "downloads": 86887632
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0024": {
+        "ref": {
+          "modrinthId": "7tEfOcA7",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "dependency",
+        "pulledInBy": [
+          "e0023"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "MezzConfig",
+          "slug": "mezzconfig",
+          "summary": "Simple configuration library for Minecraft Mods",
+          "iconUrl": "https://cdn.modrinth.com/data/7tEfOcA7/afd8afef2372805ff11f89425284129eebf87a1c_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "MIT",
+          "updated": "2026-11-09T15:28:38.719839Z",
+          "downloads": 3677699
+        },
+        "addedAt": "2026-11-24T07:46:53Z"
+      },
+      "e0025": {
+        "ref": {
+          "modrinthId": "zV5r3pPn",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "3D Skin Layers",
+          "slug": "3dskinlayers",
+          "summary": "Render the player skin layer in 3d!",
+          "iconUrl": "https://cdn.modrinth.com/data/zV5r3pPn/ff7010d4ec0275609866c8b0f603b25e25949c08_96.webp",
+          "categories": [
+            "adventure",
+            "decoration"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LicenseRef-tr7zw-Protective-License",
+          "updated": "2026-10-18T17:17:13.980081Z",
+          "downloads": 85791365
+        },
+        "addedAt": "2026-11-24T07:46:54Z"
+      },
+      "e0026": {
+        "ref": {
+          "modrinthId": "1IjD5062",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Continuity",
+          "slug": "continuity",
+          "summary": "A Minecraft mod that allows for efficient connected textures",
+          "iconUrl": "https://cdn.modrinth.com/data/1IjD5062/icon.png",
+          "categories": [
+            "decoration",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-09-16T03:20:55.014943Z",
+          "downloads": 81080139
+        },
+        "addedAt": "2026-11-24T07:46:54Z"
+      },
+      "e0027": {
+        "ref": {
+          "modrinthId": "8BmcQJ2H",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Geckolib",
+          "slug": "geckolib",
+          "summary": "A 3D animation library for entities, blocks, items, armor, and more!",
+          "iconUrl": "https://cdn.modrinth.com/data/8BmcQJ2H/012d1aadbc754995de66e8c149a56aa10b63fe05_96.webp",
+          "categories": [
+            "game-mechanics",
+            "library",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "optional",
+          "license": "MIT",
+          "updated": "2026-11-23T12:14:29.323611Z",
+          "downloads": 78700304
+        },
+        "addedAt": "2026-11-24T07:46:54Z"
+      },
+      "e0028": {
+        "ref": {
+          "modrinthId": "dxa0Bm8m",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "VeinMiner Hotkey",
+          "slug": "veinminer-client",
+          "summary": "Veinminer Addon - Use a hotkey to veinmine with a dynamic crosshair & block highlighting",
+          "iconUrl": "https://cdn.modrinth.com/data/dxa0Bm8m/3cfaaf9dcd74090bf78a03650ee43bf864d21ea5_96.webp",
+          "categories": [
+            "equipment",
+            "game-mechanics",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-11-14T13:41:33.492625Z",
+          "downloads": 78705747
+        },
+        "addedAt": "2026-11-24T07:46:54Z"
+      },
+      "e0029": {
+        "ref": {
+          "modrinthId": "9eGKb6K1",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Simple Voice Chat",
+          "slug": "simple-voice-chat",
+          "summary": "A working voice chat in Minecraft!",
+          "iconUrl": "https://cdn.modrinth.com/data/9eGKb6K1/icon.png",
+          "categories": [
+            "adventure",
+            "social",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LicenseRef-All-Rights-Reserved",
+          "updated": "2026-11-17T18:29:07.368716Z",
+          "downloads": 77890502
+        },
+        "addedAt": "2026-11-24T07:46:55Z"
+      },
+      "e0030": {
+        "ref": {
+          "modrinthId": "51shyZVL",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "More Culling",
+          "slug": "moreculling",
+          "summary": "A mod that changes how multiple types of culling are handled in order to improve performance",
+          "iconUrl": "https://cdn.modrinth.com/data/51shyZVL/c51b07193b56e952269ef50101d12aecba2b4747_96.webp",
+          "categories": [
+            "library",
+            "optimization",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "GPL-3.0-only",
+          "updated": "2026-11-08T16:15:41.985761Z",
+          "downloads": 76251411
+        },
+        "addedAt": "2026-11-24T07:46:55Z"
+      },
+      "e0031": {
+        "ref": {
+          "modrinthId": "nvQzSEkH",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Jade 🔍",
+          "slug": "jade",
+          "summary": "Shows information about what you are looking at. (Hwyla/Waila fork for Minecraft 1.16+)",
+          "iconUrl": "https://cdn.modrinth.com/data/nvQzSEkH/b04217bc2b7dc524c4d12f81ff42cc1cefb9b0fc_96.webp",
+          "categories": [
+            "library",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "CC-BY-NC-SA-4.0",
+          "updated": "2026-10-13T12:29:42.519766Z",
+          "downloads": 75015945
+        },
+        "addedAt": "2026-11-24T07:46:55Z"
+      },
+      "e0034": {
+        "ref": {
+          "modrinthId": "LQ3K71Q1",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Dynamic FPS",
+          "slug": "dynamic-fps",
+          "summary": "Reduce resource usage while Minecraft is in the background, idle, or on battery.",
+          "iconUrl": "https://cdn.modrinth.com/data/LQ3K71Q1/5056368d0d87c1a9f3efead0cb48ab39a4ea87bf_96.webp",
+          "categories": [
+            "management",
+            "optimization",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "MIT",
+          "updated": "2026-09-16T18:53:21.466715Z",
+          "downloads": 73229896
+        },
+        "addedAt": "2026-11-24T07:46:56Z"
+      },
+      "e0035": {
+        "ref": {
+          "modrinthId": "ohNO6lps",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [
+          "e0040"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Forge Config API Port",
+          "slug": "forge-config-api-port",
+          "summary": "NeoForge's & Forge's config systems provided to other modding ecosystems. Designed for a multiloader architecture.",
+          "iconUrl": "https://cdn.modrinth.com/data/ohNO6lps/cb3b942cc18a66a0f35f802e004713f134e46cc2_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "MPL-2.0",
+          "updated": "2026-09-21T10:41:45.910291Z",
+          "downloads": 72580008
+        },
+        "addedAt": "2026-11-24T07:46:56Z"
+      },
+      "e0036": {
+        "ref": {
+          "modrinthId": "e0M1UDsY",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Collective",
+          "slug": "collective",
+          "summary": "🎓 Collective is a shared library with common code for all of Serilum's mods.",
+          "iconUrl": "https://cdn.modrinth.com/data/e0M1UDsY/f5e4fe9ac298e2c14591920d6bda937c566accd0_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LicenseRef-All-Rights-Reserved",
+          "updated": "2026-11-22T16:48:35.425691Z",
+          "downloads": 72035560
+        },
+        "addedAt": "2026-11-24T07:46:56Z"
+      },
+      "e0037": {
+        "ref": {
+          "modrinthId": "Wq5SjeWM",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "FancyMenu",
+          "slug": "fancymenu",
+          "summary": "Customize Minecraft's menus with ease!",
+          "iconUrl": "https://cdn.modrinth.com/data/Wq5SjeWM/e4e82d028244a1326e6d346bf5b5336140576bb9_96.webp",
+          "categories": [
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "optional",
+          "license": "LicenseRef-DSMSLv3.1",
+          "updated": "2026-11-23T01:39:18.786464Z",
+          "downloads": 71088064
+        },
+        "addedAt": "2026-11-24T07:46:56Z"
+      },
+      "e0038": {
+        "ref": {
+          "modrinthId": "CVT4pFB2",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "dependency",
+        "pulledInBy": [
+          "e0037"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Melody",
+          "slug": "melody",
+          "summary": "OpenAL-based library mod for playing background music.",
+          "iconUrl": "https://cdn.modrinth.com/data/CVT4pFB2/87ac2562f06b104c827d322b4b937bad8fac5fbc_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "unknown",
+          "serverSide": "unknown",
+          "license": "MIT",
+          "updated": "2026-09-18T14:27:53.533208Z",
+          "downloads": 53980839
+        },
+        "addedAt": "2026-11-24T07:46:56Z"
+      },
+      "e0039": {
+        "ref": {
+          "modrinthId": "J81TRJWm",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "dependency",
+        "pulledInBy": [
+          "e0037"
+        ],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Konkrete",
+          "slug": "konkrete",
+          "summary": "Just another boring library mod.",
+          "iconUrl": "https://cdn.modrinth.com/data/J81TRJWm/f27c753fd9ec7944b49f4fe2d7cfd32527340183_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "Apache-2.0",
+          "updated": "2026-09-18T12:07:48.296667Z",
+          "downloads": 66712671
+        },
+        "addedAt": "2026-11-24T07:46:56Z"
+      },
+      "e0040": {
+        "ref": {
+          "modrinthId": "QAGBst4M",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Puzzles Lib",
+          "slug": "puzzles-lib",
+          "summary": "Why is it called Puzzles? That's the puzzle.",
+          "iconUrl": "https://cdn.modrinth.com/data/QAGBst4M/c78216c61f65b6ce82593e4e92e9c358402bb524_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "MPL-2.0",
+          "updated": "2026-11-12T15:39:56.201003Z",
+          "downloads": 67589524
+        },
+        "addedAt": "2026-11-24T07:46:57Z"
+      },
+      "e0041": {
+        "ref": {
+          "modrinthId": "aC3cM3Vq",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Mouse Tweaks",
+          "slug": "mouse-tweaks",
+          "summary": "Enhances inventory management by adding various functions to the mouse buttons. ",
+          "iconUrl": "https://cdn.modrinth.com/data/aC3cM3Vq/6c0eaa4e60a9c87f4766f222ff63286f09da32c0_96.webp",
+          "categories": [
+            "storage",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "BSD-3-Clause",
+          "updated": "2026-09-20T19:33:11.716978Z",
+          "downloads": 65642623
+        },
+        "addedAt": "2026-11-24T07:46:57Z"
+      },
+      "e0042": {
+        "ref": {
+          "modrinthId": "MBAkmtvl",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Balm",
+          "slug": "balm",
+          "summary": "Abstraction Layer for Multi-Loader Mods",
+          "iconUrl": "https://cdn.modrinth.com/data/MBAkmtvl/285b7bcfd6e525c043e640b08f3efc0cde90f7dd_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LicenseRef-All-Rights-Reserved",
+          "updated": "2026-11-02T12:16:22.811323Z",
+          "downloads": 65367258
+        },
+        "addedAt": "2026-11-24T07:46:57Z"
+      },
+      "e0043": {
+        "ref": {
+          "modrinthId": "yBW8D80W",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "LambDynamicLights - Dynamic Lights",
+          "slug": "lambdynamiclights",
+          "summary": "Adds dynamic lights to Minecraft as the most feature-complete and optimized dynamic lighting mod.",
+          "iconUrl": "https://cdn.modrinth.com/data/yBW8D80W/d4f5c3ff8df7caf024178b04eca6d69f95979cfe_96.webp",
+          "categories": [
+            "adventure",
+            "decoration",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LicenseRef-Lambda-License",
+          "updated": "2026-09-15T17:28:28.029332Z",
+          "downloads": 64809437
+        },
+        "addedAt": "2026-11-24T07:46:57Z"
+      },
+      "e0044": {
+        "ref": {
+          "modrinthId": "qQyHxfxd",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "No Chat Reports",
+          "slug": "no-chat-reports",
+          "summary": "Makes chat unreportable (where possible)",
+          "iconUrl": "https://cdn.modrinth.com/data/qQyHxfxd/0a88ddeb37b96a2a9e514db545253012368fe924.png",
+          "categories": [
+            "management",
+            "social",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "WTFPL",
+          "updated": "2026-11-20T16:51:18.249599Z",
+          "downloads": 62907282
+        },
+        "addedAt": "2026-11-24T07:46:58Z"
+      },
+      "e0045": {
+        "ref": {
+          "modrinthId": "qyVF9oeo",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Sound Physics Remastered",
+          "slug": "sound-physics-remastered",
+          "summary": "A Minecraft mod that provides realistic sound attenuation, reverberation, and absorption through blocks.",
+          "iconUrl": "https://cdn.modrinth.com/data/qyVF9oeo/798fbfae58ec95ad51f3e1d522b43227306c326c.png",
+          "categories": [
+            "adventure",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "optional",
+          "license": "GPL-3.0-only",
+          "updated": "2026-11-18T07:11:36.370619Z",
+          "downloads": 57757878
+        },
+        "addedAt": "2026-11-24T07:46:58Z"
+      },
+      "e0046": {
+        "ref": {
+          "modrinthId": "OsZiaDHq",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "CreativeCore",
+          "slug": "creativecore",
+          "summary": "A core mod",
+          "iconUrl": "https://cdn.modrinth.com/data/OsZiaDHq/4953ecd3c0c8b185b2a56d64cdb104b03f3e5038_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "required",
+          "serverSide": "optional",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-11-20T18:29:03.238945Z",
+          "downloads": 56544995
+        },
+        "addedAt": "2026-11-24T07:46:58Z"
+      },
+      "e0047": {
+        "ref": {
+          "modrinthId": "Wb5oqrBJ",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Chat Heads",
+          "slug": "chat-heads",
+          "summary": "See who you're chatting with!",
+          "iconUrl": "https://cdn.modrinth.com/data/Wb5oqrBJ/icon.png",
+          "categories": [
+            "decoration",
+            "social"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "MPL-2.0",
+          "updated": "2026-11-22T17:51:23.145696Z",
+          "downloads": 53781368
+        },
+        "addedAt": "2026-11-24T07:46:58Z"
+      },
+      "e0048": {
+        "ref": {
+          "modrinthId": "ccKDOlHs",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "oωo (owo-lib)",
+          "slug": "owo-lib",
+          "summary": "A general utility, GUI and config library for modding on Fabric and Quilt",
+          "iconUrl": "https://cdn.modrinth.com/data/ccKDOlHs/42c9fe358c72dd5afda078271c574c325e963d19_96.webp",
+          "categories": [
+            "library"
+          ],
+          "clientSide": "required",
+          "serverSide": "required",
+          "license": "MIT",
+          "updated": "2026-11-18T22:04:31.862160Z",
+          "downloads": 51827319
+        },
+        "addedAt": "2026-11-24T07:46:59Z"
+      },
+      "e0049": {
+        "ref": {
+          "modrinthId": "uy4Cnpcm",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Bookshelf",
+          "slug": "bookshelf-lib",
+          "summary": "An open source library for other mods!",
+          "iconUrl": "https://cdn.modrinth.com/data/uy4Cnpcm/002e73d916fb63c9c85e212ac47fde4ef9c4a65f.png",
+          "categories": [
+            "library",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "required",
+          "license": "LGPL-2.1-only",
+          "updated": "2026-09-29T18:20:09.703468Z",
+          "downloads": 49712256
+        },
+        "addedAt": "2026-11-24T07:46:59Z"
+      },
+      "e0050": {
+        "ref": {
+          "modrinthId": "k2ZPuTBm",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Essential Mod",
+          "slug": "essential",
+          "summary": "Enhance your Minecraft with one simple mod. Host worlds for free, chat with friends, and so much more!",
+          "iconUrl": "https://cdn.modrinth.com/data/k2ZPuTBm/7f7ac7cf2a46d5f02e9644372c44b3095ad61ffb_96.webp",
+          "categories": [
+            "management",
+            "social",
+            "utility"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "LicenseRef-All-Rights-Reserved",
+          "updated": "2026-11-02T16:09:39.222166Z",
+          "downloads": 49369221
+        },
+        "addedAt": "2026-11-24T07:46:59Z"
+      },
+      "e0051": {
+        "ref": {
+          "modrinthId": "g96Z4WVZ",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "BadOptimizations",
+          "slug": "badoptimizations",
+          "summary": "Optimization mod that focuses on things other than rendering",
+          "iconUrl": null,
+          "categories": [
+            "optimization"
+          ],
+          "clientSide": "required",
+          "serverSide": "unsupported",
+          "license": "MIT",
+          "updated": "2026-09-16T00:15:53.999159Z",
+          "downloads": 48963908
+        },
+        "addedAt": "2026-11-24T07:46:59Z"
+      },
+      "e0052": {
+        "ref": {
+          "modrinthId": "fQEb0iXm",
+          "preferred": "modrinth"
+        },
+        "kind": "mod",
+        "reason": "user",
+        "pulledInBy": [],
+        "payloadIds": [],
+        "tags": [],
+        "display": {
+          "name": "Krypton",
+          "slug": "krypton",
+          "summary": "A mod to optimize the Minecraft networking stack",
+          "iconUrl": "https://cdn.modrinth.com/data/fQEb0iXm/3ea60899d060a9286e03b87bfa9e71d0cbe2dde7_96.webp",
+          "categories": [
+            "optimization",
+            "utility"
+          ],
+          "clientSide": "optional",
+          "serverSide": "optional",
+          "license": "LGPL-3.0-only",
+          "updated": "2026-09-30T05:12:54.012334Z",
+          "downloads": 45927575
+        },
+        "addedAt": "2026-11-24T07:46:59Z"
+      }
+    },
+    "choices": {},
+    "appliedPayloads": [],
+    "overrideTemplates": [],
+    "appliedTemplates": [],
+    "snapshots": [],
+    "dismissedSuggestions": [],
+    "createdAt": "2026-11-24T07:46:50Z",
+    "updatedAt": "2026-11-24T07:46:50Z"
+  }
+}

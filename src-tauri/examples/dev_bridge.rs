@@ -70,6 +70,16 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let alt: Option<String> = arg(a, "altId")?;
             to_val(resolve::plan_add(&pack, &arg::<String>(a, "projectId")?, pin.as_deref(), for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
         }
+        "export_plan" => Ok(serde_json::to_value(modpack_planner_lib::export::plan_export(&arg(a, "pack")?, &st.catalog(), arg(a, "format")?).await).unwrap()),
+        // Dev only: write an export / import a file at a path inside test-env/.
+        "dev_export_to" => {
+            let pack: model::Pack = arg(a, "pack")?;
+            let path = test_env_path(&arg::<String>(a, "path")?)?;
+            let plan = modpack_planner_lib::export::plan_export(&pack, &st.catalog(), arg(a, "format")?).await;
+            to_val(modpack_planner_lib::export::write_archive(&pack, &plan, &path).map(|_| path.display().to_string()))
+        }
+        "dev_import_from" => to_val(modpack_planner_lib::import_file_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
+        "dev_import_instance" => to_val(modpack_planner_lib::import_instance_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
         "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
         "entry_versions" => {
             let (mc, loader): (String, _) = (arg(a, "mcVersion")?, arg(a, "loader")?);
@@ -80,6 +90,20 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         "open_external" | "pick_icon" | "export_project" | "import_project" => Ok(Value::Null),
         other => Err(json!({"code": "invalid", "message": format!("dev bridge doesn't support {other}")})),
     }
+}
+
+/// The bridge only reads and writes inside the project's test-env/ folder.
+fn test_env_path(rel: &str) -> Result<std::path::PathBuf, Value> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("test-env");
+    let p = root.join(rel);
+    let ok = !rel.contains("..") && p.starts_with(&root);
+    if !ok {
+        return Err(json!({"code": "invalid", "message": "dev bridge paths must stay inside test-env/"}));
+    }
+    if let Some(parent) = p.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    Ok(p)
 }
 
 fn main() {

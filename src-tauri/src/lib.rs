@@ -2,7 +2,9 @@
 //! here; the webview only talks to these typed commands.
 
 pub mod error;
+pub mod export;
 pub mod fetch;
+pub mod import;
 pub mod keychain;
 pub mod loaders;
 pub mod model;
@@ -33,7 +35,37 @@ pub struct AppState {
     pub curseforge: CurseForge,
 }
 
+/// Catalog plus the hash lookups importers need.
+pub struct Live<'a>(resolve::Multi<'a>, &'a AppState);
+
+#[async_trait::async_trait]
+impl resolve::Catalog for Live<'_> {
+    async fn versions(&self, p: &str, mc: &str, l: Loader, force: bool) -> AppResult<Vec<resolve::Version>> {
+        self.0.versions(p, mc, l, force).await
+    }
+    async fn version(&self, id: &str, force: bool) -> AppResult<Option<resolve::Version>> {
+        self.0.version(id, force).await
+    }
+    async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<resolve::ProjectInfo>> {
+        self.0.projects(ids, force).await
+    }
+}
+
+#[async_trait::async_trait]
+impl import::Lookup for Live<'_> {
+    async fn modrinth_by_sha1(&self, hashes: &[String]) -> AppResult<std::collections::HashMap<String, resolve::Version>> {
+        self.1.modrinth.versions_by_sha1(hashes, false).await
+    }
+    async fn curseforge_by_fingerprint(&self, fps: &[u32]) -> AppResult<std::collections::HashMap<u32, resolve::Version>> {
+        self.1.curseforge.by_fingerprints(fps).await
+    }
+}
+
 impl AppState {
+    pub fn live(&self) -> Live<'_> {
+        Live(self.catalog(), self)
+    }
+
     /// Both sites behind one catalog for the resolver.
     pub fn catalog(&self) -> resolve::Multi<'_> {
         resolve::Multi { modrinth: &self.modrinth, curseforge: &self.curseforge }
@@ -288,6 +320,81 @@ async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, l
     Ok(resolve::compatible_files(&vs, &mc_version, loader))
 }
 
+// ---------------- export / import ----------------
+#[tauri::command]
+async fn export_plan(state: St<'_>, pack: Pack, format: export::Format) -> AppResult<export::ExportPlan> {
+    Ok(export::plan_export(&pack, &state.catalog(), format).await)
+}
+
+/// Re-plans (so the file matches the pack right now), asks where to save, writes.
+#[tauri::command]
+async fn export_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack, format: export::Format) -> AppResult<Option<String>> {
+    let plan = export::plan_export(&pack, &state.catalog(), format).await;
+    if !plan.can_export {
+        return Err(AppError::Invalid("Fix the errors in the pre-flight check before exporting.".into()));
+    }
+    let (label, ext) = match format {
+        export::Format::Mrpack => ("Modrinth pack", "mrpack"),
+        export::Format::CurseforgeZip => ("CurseForge pack", "zip"),
+    };
+    let picked = app.dialog().file().set_title("Export pack").add_filter(label, &[ext]).set_file_name(format!("{}.{ext}", safe_file_name(&pack.name))).blocking_save_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    export::write_archive(&pack, &plan, &path)?;
+    Ok(Some(path.display().to_string()))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pack: Pack,
+    notes: Vec<String>,
+    unknown: Vec<String>,
+    has_overrides: bool,
+}
+
+fn store_import(st: &AppState, mut r: import::Imported) -> AppResult<ImportReport> {
+    let mut notes = r.notes;
+    notes.extend(model::normalize(&mut r.pack)?);
+    st.db.put_pack(&r.pack)?;
+    if r.has_overrides {
+        notes.push("It also has config/override files; those become override templates in a later milestone and weren't imported.".into());
+    }
+    Ok(ImportReport { pack: r.pack, notes, unknown: r.unknown, has_overrides: r.has_overrides })
+}
+
+pub async fn import_file_impl(st: &AppState, path: &std::path::Path) -> AppResult<ImportReport> {
+    let meta = std::fs::metadata(path).map_err(|e| AppError::Storage(e.to_string()))?;
+    if meta.len() > 64 * 1024 * 1024 {
+        return Err(AppError::Invalid("That file is too large to be a modpack.".into()));
+    }
+    let bytes = std::fs::read(path).map_err(|e| AppError::Storage(format!("Couldn't read the file: {e}")))?;
+    let r = import::import_archive(&bytes, &st.live()).await?;
+    store_import(st, r)
+}
+
+pub async fn import_instance_impl(st: &AppState, dir: &std::path::Path) -> AppResult<ImportReport> {
+    let r = import::import_prism_instance(dir, &st.live()).await?;
+    store_import(st, r)
+}
+
+#[tauri::command]
+async fn import_pack_file(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<ImportReport>> {
+    let picked = app.dialog().file().set_title("Import a modpack").add_filter("Modpack", &["mrpack", "zip"]).blocking_pick_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    import_file_impl(&state, &path).await.map(Some)
+}
+
+/// Read-only: picks an instance folder and reads it; nothing in it is changed.
+#[tauri::command]
+async fn import_prism_instance(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<ImportReport>> {
+    let picked = app.dialog().file().set_title("Choose a Prism instance folder").blocking_pick_folder();
+    let Some(fp) = picked else { return Ok(None) };
+    let dir = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    import_instance_impl(&state, &dir).await.map(Some)
+}
+
 // ---------------- packs ----------------
 #[derive(serde::Serialize)]
 struct Saved {
@@ -431,6 +538,10 @@ pub fn run() {
             loader_versions,
             icon,
             analyze_pack,
+            export_plan,
+            export_pack,
+            import_pack_file,
+            import_prism_instance,
             plan_add,
             plan_removal,
             entry_versions,

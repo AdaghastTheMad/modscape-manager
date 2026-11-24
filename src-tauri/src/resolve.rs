@@ -13,6 +13,40 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 const PARALLEL: usize = 8;
+
+/// Conflicts declared inside mod jars that the sites don't list (see data/known_conflicts.json).
+#[derive(Deserialize)]
+struct KnownConflicts {
+    conflicts: Vec<KnownConflict>,
+}
+#[derive(Deserialize)]
+struct KnownConflict {
+    a: ConflictSide,
+    b: ConflictSide,
+    source: String,
+}
+#[derive(Deserialize)]
+struct ConflictSide {
+    modrinth: Option<String>,
+    curseforge: Option<u64>,
+    slug: Option<String>,
+}
+
+fn known_conflicts() -> &'static KnownConflicts {
+    static K: std::sync::OnceLock<KnownConflicts> = std::sync::OnceLock::new();
+    K.get_or_init(|| serde_json::from_str(include_str!("../data/known_conflicts.json")).expect("known_conflicts.json"))
+}
+
+fn find_side(pack: &Pack, s: &ConflictSide) -> Option<String> {
+    pack.entries
+        .iter()
+        .find(|(_, e)| {
+            (s.modrinth.is_some() && e.mod_ref.modrinth_id == s.modrinth)
+                || (s.curseforge.is_some() && e.mod_ref.curseforge_id == s.curseforge)
+                || s.slug.as_ref().is_some_and(|sl| !e.display.slug.is_empty() && norm(&e.display.slug) == norm(sl))
+        })
+        .map(|(k, _)| k.clone())
+}
 /// Safety valve for a runaway dependency tree.
 pub const MAX_NEW_ENTRIES: usize = 100;
 const STALE_SECS: i64 = 365 * 24 * 60 * 60;
@@ -51,6 +85,15 @@ pub struct VFile {
     pub url: String,
     pub size: u64,
     pub hashes: HashMap<String, String>,
+    /// Modrinth marks the main jar; extra files (sources, dev jars) aren't installed.
+    pub primary: bool,
+}
+
+impl Version {
+    /// The jar a launcher installs: Modrinth's primary file, else the first.
+    pub fn main_file(&self) -> Option<&VFile> {
+        self.files.iter().find(|f| f.primary).or_else(|| self.files.first())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -674,6 +717,30 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
         }
     }
 
+    // 4b. Conflicts declared in the mods' own files (known list).
+    for c in &known_conflicts().conflicts {
+        if let (Some(ka), Some(kb)) = (find_side(pack, &c.a), find_side(pack, &c.b)) {
+            if ka == kb {
+                continue;
+            }
+            let pair = if ka < kb { (ka.clone(), kb.clone()) } else { (kb.clone(), ka.clone()) };
+            if seen_incompat.insert(pair.clone()) {
+                issues.push(Issue {
+                    id: format!("incompatible:{}:{}", pair.0, pair.1),
+                    severity: Severity::Error,
+                    kind: "incompatible",
+                    entry_key: Some(ka.clone()),
+                    other_key: Some(kb.clone()),
+                    message: format!(
+                        "{} and {} won't load together ({}; not listed on the mod sites).",
+                        pack.entries[&ka].display.name, pack.entries[&kb].display.name, c.source
+                    ),
+                    fix: Some(Fix::Remove { key: kb.clone() }),
+                });
+            }
+        }
+    }
+
     // 5. Per-entry checks that don't need the network.
     for (key, e) in &pack.entries {
         let rb = required_by.remove(key).unwrap_or_default();
@@ -697,7 +764,7 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
                 kind: "server_only",
                 entry_key: Some(key.clone()),
                 other_key: None,
-                message: format!("{name} is server-only. It does nothing on a client."),
+                message: format!("{name} runs on the server side only: needed for singleplayer and on servers, but not to join a server."),
                 fix: None,
             });
         }
@@ -1003,14 +1070,14 @@ pub async fn plan_add(
 
 // ================================================================== tests
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::model::tests::pack as base_pack;
     use std::sync::Mutex;
 
     /// Catalog backed by recorded Modrinth responses plus synthetic cases.
-    struct Fixture {
-        versions: HashMap<String, Vec<Version>>,
+    pub(crate) struct Fixture {
+        pub(crate) versions: HashMap<String, Vec<Version>>,
         by_id: HashMap<String, Version>,
         projects: HashMap<String, ProjectInfo>,
         slugs: HashMap<String, String>,
@@ -1030,7 +1097,7 @@ mod tests {
     }
 
     impl Fixture {
-        fn load() -> Self {
+        pub(crate) fn load() -> Self {
             let mut f = Fixture { versions: HashMap::new(), by_id: HashMap::new(), projects: HashMap::new(), slugs: HashMap::new(), calls: Mutex::new(0) };
             for text in [
                 include_str!("../tests/fixtures/resolver/modrinth.json"),
@@ -1063,11 +1130,30 @@ mod tests {
             }
             f
         }
-        fn id(&self, slug: &str) -> String {
+        pub(crate) fn id(&self, slug: &str) -> String {
             self.slugs.get(slug).cloned().unwrap_or_else(|| panic!("no fixture slug {slug}"))
         }
         fn versions_for(&self, slug: &str, mc: &str, loader: Loader) -> Vec<Version> {
             self.versions.get(&format!("{}|{mc}", self.id(slug))).cloned().unwrap_or_default().into_iter().filter(|v| v.supports(mc, loader)).collect()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::import::Lookup for Fixture {
+        async fn modrinth_by_sha1(&self, hashes: &[String]) -> AppResult<HashMap<String, Version>> {
+            let want: HashSet<&String> = hashes.iter().collect();
+            let mut out = HashMap::new();
+            for v in self.by_id.values().filter(|v| !v.id.starts_with(curseforge::PREFIX)) {
+                for f in &v.files {
+                    if let Some(h) = f.hashes.get("sha1").filter(|h| want.contains(h)) {
+                        out.insert(h.clone(), v.clone());
+                    }
+                }
+            }
+            Ok(out)
+        }
+        async fn curseforge_by_fingerprint(&self, _fps: &[u32]) -> AppResult<HashMap<u32, Version>> {
+            Ok(HashMap::new())
         }
     }
 
@@ -1085,16 +1171,16 @@ mod tests {
         }
     }
 
-    const NOW: i64 = 1_795_478_400; // 2026-11-24
+    pub(crate) const NOW: i64 = 1_795_478_400; // 2026-11-24
 
-    fn pack_for(mc: &str, loader: Loader) -> Pack {
+    pub(crate) fn pack_for(mc: &str, loader: Loader) -> Pack {
         let mut p = base_pack();
         p.mc_version = mc.into();
         p.loader = loader;
         p
     }
 
-    fn counter() -> impl FnMut() -> String {
+    pub(crate) fn counter() -> impl FnMut() -> String {
         let mut n = 0;
         move || {
             n += 1;
@@ -1103,7 +1189,7 @@ mod tests {
     }
 
     /// Applies a plan the way the UI does, so tests can chain operations.
-    fn apply(pack: &mut Pack, plan: AddPlan) {
+    pub(crate) fn apply(pack: &mut Pack, plan: AddPlan) {
         for a in plan.additions {
             pack.entries.insert(a.key, a.entry);
         }
@@ -1128,14 +1214,14 @@ mod tests {
         }
     }
 
-    async fn add(f: &Fixture, pack: &mut Pack, slug: &str, keys: &mut impl FnMut() -> String) -> Vec<String> {
+    pub(crate) async fn add(f: &Fixture, pack: &mut Pack, slug: &str, keys: &mut impl FnMut() -> String) -> Vec<String> {
         let plan = plan_add(pack, &f.id(slug), None, None, None, f, false, "2026-11-24T00:00:00Z", keys).await.unwrap();
         let notes = plan.notes.clone();
         apply(pack, plan);
         notes
     }
 
-    fn key_of(pack: &Pack, f: &Fixture, slug: &str) -> String {
+    pub(crate) fn key_of(pack: &Pack, f: &Fixture, slug: &str) -> String {
         let id = f.id(slug);
         pack.entries.iter().find(|(_, e)| e.mod_ref.modrinth_id.as_deref() == Some(&id)).map(|(k, _)| k.clone()).unwrap_or_else(|| panic!("{slug} not in pack"))
     }
@@ -1144,7 +1230,7 @@ mod tests {
         a.issues.iter().map(|i| i.kind).collect()
     }
 
-    fn block<T>(f: impl std::future::Future<Output = T>) -> T {
+    pub(crate) fn block<T>(f: impl std::future::Future<Output = T>) -> T {
         tauri::async_runtime::block_on(f)
     }
 
@@ -1518,6 +1604,21 @@ mod tests {
         apply(&mut pack, plan);
         let again = block(plan_add(&pack, "cf:2001", None, None, None, &f, false, "t", counter())).unwrap();
         assert!(again.additions.is_empty());
+    }
+
+    #[test]
+    fn known_conflicts_from_jar_metadata_are_flagged() {
+        // Found in the Prism round-trip: Sodium + Embeddium both load, Modrinth lists no conflict.
+        let f = Fixture::load();
+        let mut pack = pack_for("1.21.1", Loader::Neoforge);
+        let mut keys = counter();
+        block(add(&f, &mut pack, "embeddium", &mut keys));
+        block(add(&f, &mut pack, "sodium", &mut keys));
+        let a = block(analyze(&pack, &f, false, NOW));
+        let inc: Vec<&Issue> = a.issues.iter().filter(|i| i.kind == "incompatible").collect();
+        assert_eq!(inc.len(), 1, "{:?}", a.issues);
+        assert!(inc[0].message.contains("won't load together"), "{}", inc[0].message);
+        assert!(known_conflicts().conflicts.iter().all(|c| !c.source.is_empty()));
     }
 
     #[test]

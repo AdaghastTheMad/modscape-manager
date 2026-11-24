@@ -201,6 +201,8 @@ pub struct File {
     dependencies: Vec<FileDep>,
     #[serde(default)]
     is_server_pack: bool,
+    #[serde(default)]
+    file_fingerprint: u32,
 }
 fn yes() -> bool {
     true
@@ -266,7 +268,7 @@ impl File {
             loaders,
             dependencies,
             distribution_blocked: self.download_url.is_none(),
-            files: vec![VFile { filename: self.file_name, url: self.download_url.unwrap_or_default(), size: self.file_length, hashes }],
+            files: vec![VFile { filename: self.file_name, url: self.download_url.unwrap_or_default(), size: self.file_length, hashes, primary: true }],
         }
     }
 }
@@ -523,6 +525,69 @@ impl CurseForge {
     }
 }
 
+/// CurseForge's file fingerprint: MurmurHash2 (seed 1) of the file with
+/// whitespace bytes (tab, LF, CR, space) removed.
+pub fn fingerprint(bytes: &[u8]) -> u32 {
+    let data: Vec<u8> = bytes.iter().copied().filter(|b| !matches!(b, 9 | 10 | 13 | 32)).collect();
+    murmur2(&data, 1)
+}
+
+pub fn murmur2(data: &[u8], seed: u32) -> u32 {
+    const M: u32 = 0x5bd1_e995;
+    let mut h: u32 = seed ^ data.len() as u32;
+    let mut chunks = data.chunks_exact(4);
+    for c in &mut chunks {
+        let mut k = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+        k = k.wrapping_mul(M);
+        k ^= k >> 24;
+        k = k.wrapping_mul(M);
+        h = h.wrapping_mul(M);
+        h ^= k;
+    }
+    let rest = chunks.remainder();
+    if rest.len() >= 3 {
+        h ^= (rest[2] as u32) << 16;
+    }
+    if rest.len() >= 2 {
+        h ^= (rest[1] as u32) << 8;
+    }
+    if !rest.is_empty() {
+        h ^= rest[0] as u32;
+        h = h.wrapping_mul(M);
+    }
+    h ^= h >> 13;
+    h = h.wrapping_mul(M);
+    h ^= h >> 15;
+    h
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FingerprintResult {
+    #[serde(default)]
+    exact_matches: Vec<FingerprintMatch>,
+}
+#[derive(Deserialize)]
+struct FingerprintMatch {
+    file: File,
+}
+
+impl CurseForge {
+    /// Files whose fingerprint matches exactly (fingerprint → version).
+    pub async fn by_fingerprints(&self, fps: &[u32]) -> AppResult<HashMap<u32, Version>> {
+        let mut out = HashMap::new();
+        for chunk in fps.chunks(200) {
+            let req = self.post(&format!("/v1/fingerprints/{MINECRAFT_GAME_ID}"), serde_json::json!({ "fingerprints": chunk })).await?;
+            let (env, _) = self.fetcher.fetch_json::<Envelope<FingerprintResult>>(req, 7 * DAY, false, NAME, status_help(NAME)).await?;
+            for m in env.data.exact_matches {
+                let fp = m.file.file_fingerprint;
+                out.insert(fp, m.file.into_version());
+            }
+        }
+        Ok(out)
+    }
+}
+
 #[async_trait::async_trait]
 impl ModSource for CurseForge {
     fn source(&self) -> Source {
@@ -636,6 +701,14 @@ mod tests {
     fn untagged_old_files_count_as_forge() {
         let f: File = serde_json::from_value(serde_json::json!({ "id": 1, "modId": 2, "gameVersions": ["1.12.2"] })).unwrap();
         assert_eq!(f.into_version().loaders, vec!["forge"]);
+    }
+
+    #[test]
+    fn fingerprint_ignores_whitespace() {
+        assert_eq!(fingerprint(b"a b\tc\r\n"), fingerprint(b"abc"));
+        assert_ne!(fingerprint(b"abc"), fingerprint(b"abd"));
+        // Reference MurmurHash2 values (32-bit, seed 1).
+        assert_eq!(murmur2(b"", 1), 0x5bd1_5e36);
     }
 
     #[test]

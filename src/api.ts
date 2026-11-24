@@ -97,6 +97,14 @@ export interface AddPlan {
   suggestions: Suggestion[]; notes: string[];
 }
 
+// ---- export / import ----
+export type ExportFormat = "mrpack" | "curseforgeZip";
+export interface ExportFile { key: string; name: string; source: Source; path: string; projectId: string; fileId: string; versionNumber: string; url: string; size: number; distributionBlocked: boolean }
+export interface Excluded { key: string; name: string; reason: string }
+export interface ExportProblem { severity: Severity; message: string; fixes: Fix[]; fixLabel?: string | null }
+export interface ExportPlan { format: ExportFormat; files: ExportFile[]; excluded: Excluded[]; problems: ExportProblem[]; loaderLabel: string; canExport: boolean }
+export interface ImportReport { pack: Pack; notes: string[]; unknown: string[]; hasOverrides: boolean }
+
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 function toAppError(e: unknown): AppError {
@@ -142,6 +150,10 @@ export const api = {
   matchAll: (pack: Pack) => call<EntryMatches[]>("match_all", { pack }),
   planRemoval: (pack: Pack, keys: string[]) => call<string[]>("plan_removal", { pack, keys }),
   entryVersions: (projectId: string, mcVersion: string, loader: Loader) => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader }),
+  exportPlan: (pack: Pack, format: ExportFormat) => call<ExportPlan>("export_plan", { pack, format }),
+  exportPack: (pack: Pack, format: ExportFormat) => call<string | null>("export_pack", { pack, format }),
+  importPackFile: () => call<ImportReport | null>("import_pack_file"),
+  importPrismInstance: () => call<ImportReport | null>("import_prism_instance"),
   cacheStats: () => call<CacheStats>("cache_stats"),
   clearCache: () => call<CacheStats>("clear_cache"),
   openExternal: (url: string) => call<void>("open_external", { url }),

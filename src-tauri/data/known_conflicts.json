@@ -1,0 +1,20 @@
+{
+  "_comment": "Conflicts mods declare inside their own jar metadata (mods.toml / fabric.mod.json) that Modrinth and CurseForge don't list. The planner can't read jars without downloading them, so known cases live here. Match by Modrinth id, CurseForge id or slug. Add entries freely; each needs a source.",
+  "conflicts": [
+    {
+      "a": { "modrinth": "AANobbMI", "slug": "sodium" },
+      "b": { "modrinth": "sk9rgfiA", "slug": "embeddium" },
+      "source": "Sodium's and Embeddium's own metadata (both replace the renderer)"
+    },
+    {
+      "a": { "modrinth": "YL57xq9U", "slug": "iris" },
+      "b": { "modrinth": "sk9rgfiA", "slug": "embeddium" },
+      "source": "Iris's own metadata (needs Sodium itself, not a fork)"
+    },
+    {
+      "a": { "modrinth": "Bh37bMuy", "slug": "reeses-sodium-options" },
+      "b": { "modrinth": "Es5v4eyq", "slug": "sodium-options-api" },
+      "source": "Reese's Sodium Options' own metadata (both replace Sodium's options screen)"
+    }
+  ]
+}

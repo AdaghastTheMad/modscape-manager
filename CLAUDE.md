@@ -83,7 +83,7 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 12. **Installers** — `scripts/build.sh` → `.deb`, `.AppImage`, `.dmg`.
 13. **Server variant** (nice-to-have).
 
-**Status:** M1–M4 done (committed). Next: M5 (export to Prism), after owner's go-ahead. Linux Mint check still pending.
+**Status:** M1–M5 done (committed). M5 round-trip: Fabric 26.1.2 imported and launched in the test Prism; NeoForge 1.21.1 failed on two planner gaps (fixed: server-only env export, known jar-declared conflicts), rebuilt pack verified clean by download + jar-metadata check; owner to re-import and launch it when convenient. M6 (duplicate to another version) in progress. Linux Mint check still pending.
 
 ## Running it
 - `scripts/setup.sh` (or `--check`) → `scripts/dev.sh` (hot reload). Rust comes from rustup in `~/.cargo` (dev.sh sources `~/.cargo/env`).
@@ -111,6 +111,16 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
   - Cross-site matching (`sources/matching.rs`): `verified` = identical SHA-1 file (CF→MR via Modrinth's hash lookup; MR→CF by comparing candidate files), `likely` = same slug and name, `possible` = one of them. Only `verified` is pre-ticked; the user confirms links. Dependencies from the other site link to an existing entry with the same slug+name (`IdLink`) instead of duplicating.
   - Source preference: Prefer Modrinth/CurseForge switches every entry linked on both sites (clearing pins, with Undo); Mixed leaves per-mod choices. Per-mod "Use …" / "Unlink" in the details pane.
   - Real CurseForge fixtures: `scripts/record-cf-fixtures.sh` (owner runs it; it reads the saved key, macOS may ask) → `tests/fixtures/resolver/curseforge.json`; `recorded_curseforge_jei_resolves` runs once data exists.
+- **Export / import (M5, `export.rs`, `import.rs`):**
+  - `plan_export` is the pre-flight and picks files exactly as the checks do. `.mrpack` holds Modrinth-sourced files only (sha1 + sha512 + allowed host required); CurseForge zip holds CurseForge-sourced only (ids). Entries set to the other site are excluded with a bulk "Switch N to …" fix; one-site-only entries point to "Match sites". Missing loader version, lookup failures or jar-name collisions block export. Distribution-blocked files warn (Prism asks for a manual download).
+  - Exports carry no personal data (`author` is empty). `env` comes from Modrinth sides. Forge versions are exported without the MC prefix. An empty `overrides/` is always written (templates fill it in M9).
+  - Imports identify by metadata: `.mrpack` by sha1 (Modrinth `version_files`) or CurseForge file id decoded from forgecdn URLs (`/files/AAAA/BBB/` → AAAA*1000+BBB); CF zip by project/file ids; Prism instance by `mmc-pack.json` + `mods/.index/*.pw.toml`, then sha1 → Modrinth, then CurseForge fingerprint (MurmurHash2 seed 1, whitespace stripped). Imported mods are pinned; libraries other mods require become dependencies. Instance import only reads (a test asserts the folder is unchanged).
+  - Non-mod files in packs are skipped with a note (M11); override files are noted, not imported (M9).
+- **Lessons from the M5 round-trip (keep these):**
+  - Never export `env.client = "unsupported"` for mods the server needs: singleplayer is an integrated server, and launchers skip "unsupported" files on client installs. Server-only mods export as client `optional`.
+  - Mods declare conflicts inside their jars that Modrinth/CurseForge don't list (e.g. Sodium/Iris vs Embeddium, Reese's Sodium Options vs Sodium Options API). The planner can't read jars, so `src-tauri/data/known_conflicts.json` (each entry with a source) feeds the incompatible check. Add to it when a launch log shows a new one.
+  - `scripts/check-jar-metadata.py <mods folder>` predicts NeoForge/Forge load errors from downloaded test jars (missing requirements, version-ranged incompatibilities); it reproduced the loader's own error list exactly. Run it on `test-env/downloads/...` before asking the owner to launch.
+- **Prism round-trip testing:** `scripts/test-prism.sh create|start|import FILE|launch NAME|status|logs NAME|--clean` drives the installed Prism with `--dir test-env/prism` (refuses real Prism paths). The owner signs in to the test Prism themselves. Fixture packs: `cd src-tauri && cargo run --example build_fixture_packs` → `tests/fixtures/packs/*.planner.json` + `test-env/exports/*.mrpack`; `cargo run --example verify_export -- <file.mrpack>` downloads every file into `test-env/downloads/` and checks size/sha1/sha512.
 - **Dev bridge (dev only, never shipped):** `cd src-tauri && cargo run --example dev_bridge` serves the real core on `127.0.0.1:1421`; point the Vite page's `window.__TAURI_INTERNALS__.invoke` at it (snippet in `examples/dev_bridge.rs`) to exercise the UI against real Rust in a plain browser. Packs live in memory; no keychain (CurseForge is deliberately off: `disable_keychain`) and no dialogs.
 - React state updaters must stay pure (StrictMode runs them twice): generate ids/timestamps before calling `update()`.
 
@@ -131,6 +141,7 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 
 ## Decisions log
 - Nov 23, 2026: all items in the design doc's "Decided" list.
+- Nov 24, 2026 (M5 review): owner approved committing M5 and starting M6 after the log review.
 - Nov 24, 2026 (M4 review): optional suggestions are multi-select everywhere (tick any → "Add selected (N)", none ticked → "Add all"); picks are planned one after another against the growing pack and applied in one update.
 - Nov 24, 2026 (M3 review): owner approved release-first default plus a per-pack "newest build" toggle, and optional-dependency suggestions.
 - Nov 24, 2026: it's a Tauri desktop app (the doc's "local web app" wording is stale). M1 is judged on macOS only; Mint later. setup.sh installs Rust via rustup (portable to other Macs). pnpm via corepack. git author AdaghastTheMad <355918907+AdaghastTheMad@users.noreply.github.com>. Data-model revisions above. Duplicate-to-version moved to M6. Starter payload names (Iris/Oculus Search, Roxy, Diorama, etc.) to be verified against live data at the payloads milestone.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AppError } from "../api";
+import { api, type AppError, type ImportReport } from "../api";
 import { Button, ErrorNotice, Modal, Notice, Panel, Slot } from "../components/kit";
 import { loaderLabel, type PackSummary } from "../model";
 import { NewPackWizard } from "./NewPack";
@@ -10,6 +10,14 @@ export function Packs({ onOpen }: { onOpen: (id: string) => void }) {
   const [notes, setNotes] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PackSummary | null>(null);
+  const [report, setReport] = useState<ImportReport | null>(null);
+  const [importing, setImporting] = useState(false);
+  const runImport = async (fn: () => Promise<ImportReport | null>) => {
+    setError(null); setNotes([]); setImporting(true);
+    try { const r = await fn(); if (r) { setReport(r); await refresh(); } }
+    catch (e) { setError(e as AppError); }
+    finally { setImporting(false); }
+  };
 
   const refresh = () => api.listPacks().then(setPacks, setError);
   useEffect(() => { refresh(); }, []);
@@ -31,9 +39,12 @@ export function Packs({ onOpen }: { onOpen: (id: string) => void }) {
     <div className="settings stack-lg">
       <Panel title="Packs" actions={<>
         <Button onClick={importProject}>Open project…</Button>
+        <Button onClick={() => runImport(api.importPackFile)} disabled={importing} title=".mrpack or CurseForge zip">Import pack…</Button>
+        <Button onClick={() => runImport(api.importPrismInstance)} disabled={importing} title="Reads a Prism instance folder without changing it">Import Prism instance…</Button>
         <Button variant="primary" onClick={() => setCreating(true)}>New pack</Button>
       </>}>
         <div className="stack">
+          {importing && <Notice title="Importing…">Identifying every mod from its metadata.</Notice>}
           {error && <ErrorNotice error={error} />}
           {notes.length > 0 && <Notice title="Imported, with some repairs">{notes.map((n, i) => <div key={i}>{n}</div>)}</Notice>}
           {packs === null ? <p className="muted">Loading…</p> : packs.length === 0 ? (
@@ -61,6 +72,24 @@ export function Packs({ onOpen }: { onOpen: (id: string) => void }) {
         </div>
       </Panel>
       {creating && <NewPackWizard onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); onOpen(id); }} />}
+      {report && (
+        <Modal title={`Imported ${report.pack.name}`} width={560} onClose={() => setReport(null)}>
+          <div className="stack-lg">
+            <p className="muted">Minecraft {report.pack.mcVersion} · {loaderLabel(report.pack.loader)} {report.pack.loaderVersion} · {Object.keys(report.pack.entries).length} mods, pinned to the versions the pack used.</p>
+            <ul className="dep-list">{report.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+            {report.unknown.length > 0 && (
+              <Notice title={`${report.unknown.length} file${report.unknown.length === 1 ? "" : "s"} couldn't be identified`}>
+                <div className="muted">They aren't on Modrinth or CurseForge (or need a CurseForge key). Add them by hand if you need them:</div>
+                <ul className="dep-list">{report.unknown.map((u) => <li key={u}><code>{u}</code></li>)}</ul>
+              </Notice>
+            )}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Button onClick={() => setReport(null)}>Close</Button>
+              <Button variant="primary" onClick={() => { const id = report.pack.id; setReport(null); onOpen(id); }}>Open pack</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {confirmDelete && (
         <Modal title="Delete pack?" width={460} onClose={() => setConfirmDelete(null)}>
           <div className="stack-lg">
