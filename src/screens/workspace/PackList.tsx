@@ -1,0 +1,200 @@
+import { useMemo, useState } from "react";
+import type { Analysis, Fix, Issue, Severity, Suggestion } from "../../api";
+import { Button, ModIcon, Notice, Panel, Select, SourceBadge, Tabs, Tooltip } from "../../components/kit";
+import { entryName, isLibrary, prettyCategory, type Pack, type PackEntry } from "../../model";
+
+export type GroupBy = "category" | "pulledInBy";
+
+const SEV_ICON: Record<Severity, string> = { error: "✖", warning: "!", info: "i" };
+
+export function fixLabel(f: Fix): string {
+  switch (f.kind) {
+    case "addProject": return `Add ${f.name}`;
+    case "remove": return "Remove";
+    case "unpin": return "Unpin";
+    case "pinTo": return `Pin ${f.versionNumber}`;
+  }
+}
+
+function worst(issues: Issue[]): Severity | null {
+  if (issues.some((i) => i.severity === "error")) return "error";
+  if (issues.some((i) => i.severity === "warning")) return "warning";
+  return issues.length ? "info" : null;
+}
+
+function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggestions, onSuggest, onDismiss }: {
+  pack: Pack; analysis: Analysis | null; analyzing: boolean; onFix: (f: Fix) => void; onSelect: (k: string) => void; onRecheck: () => void;
+  suggestions: Suggestion[]; onSuggest: (s: Suggestion) => void; onDismiss: (s: Suggestion) => void;
+}) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const [showSugg, setShowSugg] = useState(false);
+  const issues = analysis?.issues ?? [];
+  const n = (s: Severity) => issues.filter((i) => i.severity === s).length;
+  const errors = n("error"), warnings = n("warning"), infos = n("info");
+  const expanded = open ?? errors > 0;
+  const count = Object.keys(pack.entries).length;
+  if (count === 0) return null;
+
+  const summary = !analysis ? (analyzing ? "Checking…" : "Not checked yet")
+    : errors + warnings === 0 ? "All checks pass"
+    : [errors && `${errors} error${errors > 1 ? "s" : ""}`, warnings && `${warnings} warning${warnings > 1 ? "s" : ""}`].filter(Boolean).join(" · ");
+
+  return (
+    <section className={`checks checks--${errors ? "error" : warnings ? "warning" : "ok"}`} aria-label="Pack checks">
+      <div className="row checks__head">
+        <button type="button" className="checks__toggle" onClick={() => setOpen(!expanded)} aria-expanded={expanded}>
+          <span className="pixel">{errors ? "✖" : warnings ? "!" : "✔"} {summary}</span>
+          {infos > 0 && <span className="muted"> · {infos} note{infos > 1 ? "s" : ""}</span>}
+          {analyzing && analysis && <span className="muted"> · rechecking…</span>}
+          {analysis && !analysis.complete && <span className="muted"> · some mods couldn't be checked</span>}
+        </button>
+        <span className="grow" />
+        <Button size="small" onClick={onRecheck} disabled={analyzing} title="Re-fetch everything, bypassing the cache">Recheck</Button>
+      </div>
+      {expanded && issues.length > 0 && (
+        <ul className="issue-list">
+          {issues.map((i) => (
+            <li key={i.id} className={`issue issue--${i.severity}`}>
+              <span className="issue__icon" aria-label={i.severity}>{SEV_ICON[i.severity]}</span>
+              <button type="button" className="issue__msg" onClick={() => i.entryKey && onSelect(i.entryKey)}>{i.message}</button>
+              {i.fix && <Button size="small" variant={i.fix.kind === "remove" ? "danger" : "primary"} onClick={() => onFix(i.fix!)}>{fixLabel(i.fix)}</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {suggestions.length > 0 && (
+        <div className="suggestions">
+          <button type="button" className="checks__toggle muted" onClick={() => setShowSugg(!showSugg)} aria-expanded={showSugg}>
+            {showSugg ? "▾" : "▸"} {suggestions.length} optional dependenc{suggestions.length > 1 ? "ies" : "y"} suggested
+          </button>
+          {showSugg && (
+            <ul className="issue-list">
+              {suggestions.map((s) => (
+                <li key={s.projectId} className="issue issue--info">
+                  <ModIcon url={s.iconUrl} label={s.name} size={28} />
+                  <span className="issue__msg" title={s.summary}>
+                    <strong>{s.name}</strong> <span className="muted">· optional for {s.suggestedBy.map((k) => entryName(pack, k)).join(", ")}</span>
+                  </span>
+                  <Button size="small" variant="primary" onClick={() => onSuggest(s)}>Add</Button>
+                  <Button size="small" onClick={() => onDismiss(s)} aria-label={`Dismiss ${s.name}`}>✕</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function groupKey(e: PackEntry, by: GroupBy, pack: Pack): string {
+  if (isLibrary(e) && by === "category") return "\u0000library";
+  if (by === "pulledInBy") {
+    if (e.reason !== "dependency") return "\u0000user";
+    const parents = e.pulledInBy.filter((k) => k in pack.entries);
+    return parents.length ? parents.map((k) => entryName(pack, k)).sort().join(", ") : "\u0001unneeded";
+  }
+  return e.display.categories.find((c) => c !== "library") ?? "uncategorized";
+}
+
+function groupTitle(g: string, by: GroupBy): string {
+  if (g === "\u0000library") return "Libraries";
+  if (g === "\u0000user") return "Added by you";
+  if (g === "\u0001unneeded") return "Dependencies nothing needs";
+  return by === "pulledInBy" ? `Pulled in by ${g}` : prettyCategory(g);
+}
+
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss }: {
+  pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
+  undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
+  onSuggest: (s: Suggestion) => void; onDismiss: (s: Suggestion) => void;
+}) {
+  const [by, setBy] = useState<GroupBy>("category");
+  const issuesByEntry = useMemo(() => {
+    const m = new Map<string, Issue[]>();
+    for (const i of analysis?.issues ?? []) {
+      for (const k of [i.entryKey, i.kind === "incompatible" ? i.otherKey : null]) {
+        if (k) m.set(k, [...(m.get(k) ?? []), i]);
+      }
+    }
+    return m;
+  }, [analysis]);
+
+  const groups = useMemo(() => {
+    const m = new Map<string, [string, PackEntry][]>();
+    for (const [k, e] of Object.entries(pack.entries)) {
+      const g = groupKey(e, by, pack);
+      m.set(g, [...(m.get(g) ?? []), [k, e]]);
+    }
+    for (const list of m.values()) list.sort((a, b) => a[1].display.name.localeCompare(b[1].display.name));
+    // "\u0000" groups go first when grouping by origin, libraries go last by category.
+    return [...m.entries()].sort((a, b) => {
+      const rank = (g: string) => (g === "\u0000user" ? -1 : g === "\u0000library" || g === "\u0001unneeded" ? 1 : 0);
+      return rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]);
+    });
+  }, [pack, by]);
+  const count = Object.keys(pack.entries).length;
+  const deps = Object.values(pack.entries).filter((e) => e.reason === "dependency").length;
+
+  return (
+    <Panel className="pane" title={`Pack · ${count} mod${count === 1 ? "" : "s"}`} actions={
+      <Tabs label="View" value="list" onChange={() => {}} tabs={[{ id: "list", label: "List" }, { id: "graph", label: "Graph (M7)", disabled: true }]} />
+    }>
+      <div className="pane__fixed stack">
+        <Checks pack={pack} analysis={analysis} analyzing={analyzing} onFix={onFix} onSelect={onSelect} onRecheck={onRecheck}
+          suggestions={analysis?.suggestions ?? []} onSuggest={onSuggest} onDismiss={onDismiss} />
+        {notice}
+        {undo && <Notice title={undo.label}><Button size="small" onClick={undo.run}>Undo</Button></Notice>}
+        {count > 0 && (
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="muted" style={{ fontSize: 12 }}>{count - deps} added by you · {deps} dependenc{deps === 1 ? "y" : "ies"}</span>
+            <Select aria-label="Group by" value={by} onChange={(e) => setBy(e.target.value as GroupBy)}>
+              <option value="category">Group by category</option>
+              <option value="pulledInBy">Group by "pulled in by"</option>
+            </Select>
+          </div>
+        )}
+      </div>
+      <div className="pane__body stack">
+        {count === 0 ? (
+          <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Search on the left and press + (or Enter) to add mods. Their dependencies come along automatically.</p></div></div>
+        ) : groups.map(([g, list]) => (
+          <section key={g} className={g === "\u0000library" ? "group group--lib" : "group"}>
+            <h3 className="group__title">{groupTitle(g, by)} <span className="muted">({list.length})</span></h3>
+            <ul className="entry-list">
+              {list.map(([k, e]) => {
+                const iss = issuesByEntry.get(k) ?? [];
+                const w = worst(iss);
+                const parents = e.reason === "dependency" ? e.pulledInBy.filter((p) => p in pack.entries).map((p) => entryName(pack, p)) : [];
+                const file = analysis?.entries[k]?.file;
+                return (
+                  <li key={k} className={`entry${selectedKey === k ? " entry--sel" : ""}${isLibrary(e) && by === "pulledInBy" ? " entry--lib" : ""}`}
+                    tabIndex={0} aria-selected={selectedKey === k} onClick={() => onSelect(k)} onFocus={() => onSelect(k)}>
+                    <ModIcon url={e.display.iconUrl} label={e.display.name} size={36} selected={selectedKey === k} error={w === "error"} />
+                    <div className="grow">
+                      <div className="hit__name">
+                        {e.display.name}
+                        {file?.pinned && <span className="pin-badge" title={`Pinned to ${file.versionNumber}`}>📌</span>}
+                      </div>
+                      <div className="hit__meta">
+                        {parents.length ? `pulled in by ${parents.join(", ")}` : e.display.categories.map(prettyCategory).join(", ") || "no category"}
+                        {file && ` · ${file.versionNumber}`}
+                      </div>
+                    </div>
+                    {w && w !== "info" && (
+                      <Tooltip name={`${iss.length} problem${iss.length > 1 ? "s" : ""}`} lines={iss.map((i) => i.message)} placement="below">
+                        <span className={`sev-badge sev-badge--${w}`} tabIndex={0} aria-label={`${w}: ${iss.map((i) => i.message).join(" ")}`}>{SEV_ICON[w]}</span>
+                      </Tooltip>
+                    )}
+                    <SourceBadge source={e.ref.preferred} />
+                    <Button size="small" variant="danger" aria-label={`Remove ${e.display.name}`} onClick={(ev) => { ev.stopPropagation(); onRemove(k); }}>✕</Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </Panel>
+  );
+}

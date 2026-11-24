@@ -1,0 +1,93 @@
+//! DEV ONLY: serves the real Rust core over http://127.0.0.1:1421 so the UI
+//! can be exercised in a plain browser (e.g. an agent's browser pane) when the
+//! desktop window can't be driven. Never shipped: examples aren't bundled.
+//!
+//!   cargo run --example dev_bridge
+//!
+//! Then, in the browser console of the Vite page (http://127.0.0.1:1420):
+//!   window.__TAURI_INTERNALS__ = { invoke: (cmd, args) => fetch("http://127.0.0.1:1421/invoke",
+//!     { method: "POST", body: JSON.stringify({ cmd, args }) }).then(async r => { const j = await r.json(); if (!r.ok) throw j; return j; }) };
+//!
+//! Packs live in memory; keychain, dialogs and the opener are not available.
+
+use modpack_planner_lib::{model, resolve, store, AppState};
+use serde_json::{json, Value};
+
+fn arg<T: serde::de::DeserializeOwned>(args: &Value, k: &str) -> Result<T, Value> {
+    serde_json::from_value(args.get(k).cloned().unwrap_or(Value::Null)).map_err(|e| json!({"code": "invalid", "message": format!("bad arg {k}: {e}")}))
+}
+
+fn to_val<T: serde::Serialize, E: serde::Serialize>(r: Result<T, E>) -> Result<Value, Value> {
+    r.map(|v| serde_json::to_value(v).unwrap()).map_err(|e| serde_json::to_value(e).unwrap())
+}
+
+async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
+    use resolve::Catalog;
+    let force = a.get("force").and_then(Value::as_bool).unwrap_or(false);
+    match cmd {
+        "app_info" => Ok(json!({"version": "dev-bridge", "userAgent": modpack_planner_lib::USER_AGENT, "os": std::env::consts::OS, "allowedHosts": []})),
+        "key_status" => Ok(json!({"keychainAvailable": false, "hasKey": false, "backend": "dev bridge", "problem": {"message": "No keychain in the dev bridge", "help": ""}})),
+        "search" => to_val(st.source(arg(a, "source")?).search(&arg(a, "query")?).await),
+        "project_details" => to_val(st.modrinth.project(&arg::<String>(a, "id")?, force).await),
+        "categories" => to_val(st.modrinth.categories(force).await),
+        "game_versions" => to_val(st.modrinth.game_versions(force).await),
+        "loader_versions" => to_val(modpack_planner_lib::loaders::loader_versions(&st.fetcher, arg(a, "loader")?, &arg::<String>(a, "mcVersion")?, force).await),
+        "icon" => to_val(st.fetcher.icon_data_url(&arg::<String>(a, "url")?).await),
+        "list_packs" => to_val(st.db.list_packs()),
+        "get_pack" => match st.db.get_pack(&arg::<String>(a, "id")?) {
+            Ok(Some(p)) => Ok(serde_json::to_value(p).unwrap()),
+            Ok(None) => Err(json!({"code": "invalid", "message": "That pack no longer exists."})),
+            Err(e) => Err(serde_json::to_value(e).unwrap()),
+        },
+        "save_pack" => {
+            let mut pack: model::Pack = arg(a, "pack")?;
+            let notes = to_val(model::normalize(&mut pack))?;
+            to_val(st.db.put_pack(&pack))?;
+            Ok(json!({"pack": pack, "notes": notes}))
+        }
+        "delete_pack" => to_val(st.db.delete_pack(&arg::<String>(a, "id")?)),
+        "analyze_pack" => Ok(serde_json::to_value(resolve::analyze(&arg(a, "pack")?, &st.modrinth, force, store::now_secs()).await).unwrap()),
+        "plan_add" => {
+            let pack: model::Pack = arg(a, "pack")?;
+            let pin: Option<String> = arg(a, "pinVersion")?;
+            let for_key: Option<String> = arg(a, "forKey")?;
+            to_val(resolve::plan_add(&pack, &arg::<String>(a, "projectId")?, pin.as_deref(), for_key.as_deref(), &st.modrinth, false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
+        }
+        "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
+        "entry_versions" => {
+            let (mc, loader): (String, _) = (arg(a, "mcVersion")?, arg(a, "loader")?);
+            let vs = st.modrinth.versions(&arg::<String>(a, "projectId")?, &mc, loader, false).await.map_err(|e| serde_json::to_value(e).unwrap())?;
+            Ok(serde_json::to_value(resolve::compatible_files(&vs, &mc, loader)).unwrap())
+        }
+        "cache_stats" => to_val(st.db.cache_stats()),
+        "open_external" | "pick_icon" | "export_project" | "import_project" => Ok(Value::Null),
+        other => Err(json!({"code": "invalid", "message": format!("dev bridge doesn't support {other}")})),
+    }
+}
+
+fn main() {
+    let st = AppState::new(store::Db::memory());
+    let server = tiny_http::Server::http("127.0.0.1:1421").expect("bind 127.0.0.1:1421");
+    println!("dev bridge listening on http://127.0.0.1:1421");
+    let cors = |r: tiny_http::Response<std::io::Cursor<Vec<u8>>>| {
+        r.with_header("Access-Control-Allow-Origin: http://127.0.0.1:1420".parse::<tiny_http::Header>().unwrap())
+            .with_header("Access-Control-Allow-Headers: content-type".parse::<tiny_http::Header>().unwrap())
+            .with_header("Content-Type: application/json".parse::<tiny_http::Header>().unwrap())
+    };
+    for mut req in server.incoming_requests() {
+        if req.method() == &tiny_http::Method::Options {
+            let _ = req.respond(cors(tiny_http::Response::from_data(Vec::new())));
+            continue;
+        }
+        let mut body = String::new();
+        let _ = req.as_reader().read_to_string(&mut body);
+        let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+        let cmd = parsed.get("cmd").and_then(Value::as_str).unwrap_or("").to_string();
+        let args = parsed.get("args").cloned().unwrap_or(json!({}));
+        let t = std::time::Instant::now();
+        let result = tauri::async_runtime::block_on(dispatch(&st, &cmd, &args));
+        println!("{cmd} {} in {:?}", if result.is_ok() { "ok" } else { "ERR" }, t.elapsed());
+        let (code, v) = match result { Ok(v) => (200, v), Err(e) => (400, e) };
+        let _ = req.respond(cors(tiny_http::Response::from_data(serde_json::to_vec(&v).unwrap()).with_status_code(code)));
+    }
+}

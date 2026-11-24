@@ -365,3 +365,48 @@ mod tests {
         assert_eq!(urlencode_segment("../x"), "%2E%2E%2Fx");
     }
 }
+
+// ---------------- catalog for the resolver ----------------
+use crate::error::AppError;
+use crate::resolve::{Catalog, ProjectInfo, Version};
+
+#[async_trait::async_trait]
+impl Catalog for Modrinth {
+    async fn versions(&self, project_id: &str, mc: &str, loader: Loader, force: bool) -> AppResult<Vec<Version>> {
+        let loaders = serde_json::to_string(loader.accepts()).expect("loaders");
+        let games = serde_json::to_string(&[mc]).expect("games");
+        let req = self
+            .fetcher
+            .http()
+            .get(format!("{BASE}/v2/project/{}/version", urlencode_segment(project_id)))
+            .query(&[("loaders", loaders), ("game_versions", games), ("include_changelog", "false".into())]);
+        match self.fetcher.fetch_json::<Vec<Version>>(req, DAY, force, NAME, status_help(NAME)).await {
+            Ok((v, _)) => Ok(v),
+            Err(AppError::Api { status: 404, .. }) => Ok(vec![]),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn version(&self, id: &str, force: bool) -> AppResult<Option<Version>> {
+        let req = self.fetcher.http().get(format!("{BASE}/v2/version/{}", urlencode_segment(id)));
+        match self.fetcher.fetch_json::<Version>(req, 7 * DAY, force, NAME, status_help(NAME)).await {
+            Ok((v, _)) => Ok(Some(v)),
+            Err(AppError::Api { status: 404, .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<ProjectInfo>> {
+        let mut out = Vec::new();
+        for chunk in ids.chunks(100) {
+            let req = self
+                .fetcher
+                .http()
+                .get(format!("{BASE}/v2/projects"))
+                .query(&[("ids", serde_json::to_string(chunk).expect("ids"))]);
+            let (mut v, _) = self.fetcher.fetch_json::<Vec<ProjectInfo>>(req, DAY, force, NAME, status_help(NAME)).await?;
+            out.append(&mut v);
+        }
+        Ok(out)
+    }
+}

@@ -70,7 +70,6 @@ impl Db {
         Self::init(conn)
     }
 
-    #[cfg(test)]
     pub fn memory() -> Self {
         Self::init(Connection::open_in_memory().unwrap()).unwrap()
     }

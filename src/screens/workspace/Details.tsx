@@ -1,0 +1,182 @@
+import { useEffect, useState } from "react";
+import { api, type Analysis, type AppError, type DepLink, type FileInfo, type Fix, type ProjectDetails, type SearchHit } from "../../api";
+import { Button, ErrorNotice, ModIcon, Notice, Panel, SourceBadge } from "../../components/kit";
+import { Markdown } from "../../components/Markdown";
+import { fmtCompact, fmtDate } from "../../hooks";
+import { entryName, findEntry, isLibrary, loaderLabel, prettyCategory, type Pack } from "../../model";
+import { fixLabel } from "./PackList";
+
+export type Selection = { kind: "hit"; hit: SearchHit } | { kind: "entry"; key: string } | null;
+
+function DepList({ title, deps, pack, onSelect, onAdd, addLabel }: {
+  title: string; deps: DepLink[]; pack: Pack; onSelect: (k: string) => void; onAdd?: (d: DepLink) => void; addLabel?: string;
+}) {
+  if (!deps.length) return null;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <h3 style={{ margin: 0 }}>{title}</h3>
+      <ul className="dep-list">
+        {deps.map((d) => (
+          <li key={d.projectId} className="row">
+            {d.inPack ? (
+              <button type="button" className="linkish" onClick={() => onSelect(d.inPack!)}>✔ {entryName(pack, d.inPack)}</button>
+            ) : (
+              <span className="muted">○ {d.name}</span>
+            )}
+            {!d.inPack && onAdd && <Button size="small" variant="primary" onClick={() => onAdd(d)}>{addLabel ?? "Add"}</Button>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: string; file?: FileInfo | null; onPin: (versionId: string | null) => void }) {
+  const e = pack.entries[entryKey];
+  const [versions, setVersions] = useState<FileInfo[] | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setVersions(null); setOpen(false); }, [entryKey]);
+  const load = () => {
+    setOpen(true);
+    if (versions || !e.ref.modrinthId) return;
+    api.entryVersions(e.ref.modrinthId, pack.mcVersion, pack.loader).then(setVersions, setError);
+  };
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <h3 style={{ margin: 0 }}>File</h3>
+      {file ? (
+        <p style={{ margin: 0 }}>
+          <strong>{file.versionNumber}</strong> <span className={file.versionType === "release" ? "muted" : "warn"}>({file.versionType})</span>
+          <span className="muted"> · {fmtDate(file.datePublished)} · {file.pinned ? "pinned" : pack.channelPolicy === "newest" ? "newest build" : file.versionType === "release" ? "newest release" : `no release yet, newest ${file.versionType}`}</span>
+        </p>
+      ) : <p className="muted" style={{ margin: 0 }}>No file chosen yet.</p>}
+      <div className="row">
+        {e.fileId
+          ? <Button size="small" onClick={() => onPin(null)}>Float to newest</Button>
+          : file && <Button size="small" onClick={() => onPin(file.versionId)}>Pin this version</Button>}
+        <Button size="small" onClick={() => (open ? setOpen(false) : load())}>{open ? "Hide versions" : "Choose version…"}</Button>
+      </div>
+      {open && (
+        <div className="mc-panel mc-panel--inset version-pick">
+          {error && <ErrorNotice error={error} />}
+          {!versions && !error && <span className="muted">Loading versions…</span>}
+          {versions?.length === 0 && <span className="muted">No builds for {pack.mcVersion} · {loaderLabel(pack.loader)}.</span>}
+          {versions?.map((v) => (
+            <button key={v.versionId} type="button" className="version-row" aria-pressed={e.fileId === v.versionId}
+              onClick={() => { onPin(v.versionId); setOpen(false); }}>
+              <span>{v.versionNumber}</span>
+              <span className={v.versionType === "release" ? "muted" : "warn"}>{v.versionType}</span>
+              <span className="muted">{fmtDate(v.datePublished)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemove, onToggleLibrary, onPin, onFix, onSelect }: {
+  pack: Pack; analysis: Analysis | null; selection: Selection; onAdd: (h: SearchHit) => void; onAddProject: (id: string, pin?: string | null, forKey?: string) => void;
+  onRemove: (k: string) => void; onToggleLibrary: (k: string, value: boolean) => void; onPin: (k: string, versionId: string | null) => void;
+  onFix: (f: Fix) => void; onSelect: (k: string) => void;
+}) {
+  const entryKey = selection?.kind === "entry" && pack.entries[selection.key] ? selection.key : undefined;
+  const ref = selection?.kind === "hit" ? { source: selection.hit.source, id: selection.hit.id }
+    : entryKey ? (() => {
+      const r = pack.entries[entryKey].ref;
+      return r.preferred === "modrinth" && r.modrinthId ? { source: "modrinth" as const, id: r.modrinthId } : { source: r.preferred, id: String(r.curseforgeId ?? r.modrinthId) };
+    })() : null;
+  const [details, setDetails] = useState<ProjectDetails | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
+
+  useEffect(() => {
+    setDetails(null); setError(null);
+    if (!ref) return;
+    let live = true;
+    api.projectDetails(ref.source, ref.id).then((d) => live && setDetails(d), (e) => live && setError(e));
+    return () => { live = false; };
+  }, [ref?.source, ref?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!ref) return <Panel className="pane" title="Details"><div className="empty-state"><p>Select a mod to see its details here.</p></div></Panel>;
+  const key = entryKey ?? findEntry(pack, ref.source, ref.id);
+  const entry = key ? pack.entries[key] : undefined;
+  const rep = key ? analysis?.entries[key] : undefined;
+  const fallback = selection?.kind === "hit" ? selection.hit : null;
+  const name = details?.name ?? fallback?.name ?? entry?.display.name ?? "";
+  const issues = key ? (analysis?.issues ?? []).filter((i) => i.entryKey === key || (i.kind === "incompatible" && i.otherKey === key)) : [];
+  const supports = !entry && details && {
+    version: details.gameVersions.includes(pack.mcVersion),
+    loader: details.loaders.includes(pack.loader) || (pack.loader === "quilt" && details.loaders.includes("fabric")),
+  };
+
+  return (
+    <Panel className="pane" title="Details">
+      <div className="pane__body stack-lg">
+        <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
+          <ModIcon url={details?.iconUrl ?? fallback?.iconUrl ?? entry?.display.iconUrl} label={name} size={64} />
+          <div className="grow stack" style={{ gap: 4 }}>
+            <h2 style={{ margin: 0 }}>{name}</h2>
+            <div className="row"><SourceBadge source={ref.source} />
+              {entry && <span className="muted" style={{ fontSize: 12 }}>{entry.reason === "dependency" ? "added as a dependency" : "added by you"}</span>}
+              {details && <span className="muted" style={{ fontSize: 12 }}>{fmtCompact.format(details.downloads)} downloads</span>}</div>
+          </div>
+        </div>
+        <div className="row">
+          {key && entry && (
+            <Button size="small" onClick={() => onToggleLibrary(key, !isLibrary(entry))} title="Libraries are dimmed and grouped at the bottom">
+              {isLibrary(entry) ? "Not a library" : "Treat as library"}
+            </Button>
+          )}
+          {key ? <Button size="small" variant="danger" onClick={() => onRemove(key)}>Remove from pack</Button>
+            : fallback && <Button size="small" variant="primary" onClick={() => onAdd(fallback)}>Add to pack</Button>}
+          {details && <Button size="small" onClick={() => api.openExternal(details.pageUrl)}>Modrinth ↗</Button>}
+        </div>
+
+        {issues.map((i) => (
+          <Notice key={i.id} tone={i.severity === "error" ? "error" : i.severity === "warning" ? "warn" : "ok"} title={i.message}>
+            {i.fix && <Button size="small" onClick={() => onFix(i.fix!)}>{fixLabel(i.fix)}</Button>}
+          </Notice>
+        ))}
+
+        {key && <FileControl pack={pack} entryKey={key} file={rep?.file} onPin={(v) => onPin(key, v)} />}
+        {rep && (
+          <>
+            <DepList title="Requires" deps={rep.required} pack={pack} onSelect={onSelect} onAdd={(d) => onAddProject(d.projectId, d.versionId, key)} />
+            <DepList title="Optional" deps={rep.optional} pack={pack} onSelect={onSelect} onAdd={(d) => onAddProject(d.projectId)} />
+            <DepList title="Incompatible with" deps={rep.incompatible} pack={pack} onSelect={onSelect} />
+            {rep.requiredBy.length > 0 && (
+              <div className="stack" style={{ gap: 4 }}>
+                <h3 style={{ margin: 0 }}>Needed by</h3>
+                <ul className="dep-list">{rep.requiredBy.map((k) => <li key={k}><button type="button" className="linkish" onClick={() => onSelect(k)}>{entryName(pack, k)}</button></li>)}</ul>
+              </div>
+            )}
+          </>
+        )}
+
+        {error && <ErrorNotice error={error} />}
+        {!details && !error && <p className="muted">Loading…</p>}
+        {details && (
+          <>
+            {supports && (!supports.version || !supports.loader) && (
+              <Notice tone="error" title={`No ${!supports.version ? pack.mcVersion : loaderLabel(pack.loader)} build listed`}>
+                This mod lists {details.loaders.join(", ") || "no loaders"} for {details.gameVersions.length} game versions.
+              </Notice>
+            )}
+            <p>{details.summary}</p>
+            <dl className="facts">
+              <dt>License</dt><dd>{details.license ? (details.license.name || details.license.id) : "unknown"}</dd>
+              <dt>Updated</dt><dd>{fmtDate(details.updated)}</dd>
+              <dt>Loaders</dt><dd>{details.loaders.join(", ") || "none listed"}</dd>
+              <dt>Client / server</dt><dd>{details.clientSide ?? "?"} / {details.serverSide ?? "?"}</dd>
+              <dt>Categories</dt><dd>{details.categories.map(prettyCategory).join(", ") || "none"}</dd>
+            </dl>
+            {details.links.length > 0 && <div className="row">{details.links.map(([l, u]) => <Button key={l} size="small" onClick={() => api.openExternal(u)}>{l} ↗</Button>)}</div>}
+            <Markdown source={details.body} />
+            {details.freshness.stale && <p className="muted" style={{ fontSize: 12 }}>Offline: saved copy from {new Date(details.freshness.fetchedAt * 1000).toLocaleString()}.</p>}
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}

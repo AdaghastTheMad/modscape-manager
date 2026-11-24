@@ -20,6 +20,17 @@ pub enum SourcePreference {
     Mixed,
 }
 
+/// Which build a floating (unpinned) mod uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ChannelPolicy {
+    /// Newest release; beta only if there's no release, then alpha.
+    #[default]
+    Stable,
+    /// Newest build for the version and loader, whatever its channel.
+    Newest,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum EntryKind {
@@ -133,6 +144,8 @@ pub struct Pack {
     pub loader_version: String,
     #[serde(default)]
     pub source_preference: SourcePreference,
+    #[serde(default)]
+    pub channel_policy: ChannelPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default)]
@@ -147,6 +160,9 @@ pub struct Pack {
     pub applied_templates: Vec<AppliedRef>,
     #[serde(default)]
     pub snapshots: Vec<Value>,
+    /// Optional-dependency suggestions the user turned down (Modrinth project ids).
+    #[serde(default)]
+    pub dismissed_suggestions: Vec<String>,
     #[serde(default)]
     pub created_at: String,
     #[serde(default)]
@@ -250,6 +266,38 @@ pub fn normalize(pack: &mut Pack) -> AppResult<Vec<String>> {
     Ok(notes)
 }
 
+/// Dependencies that become orphans if `removing` is removed: entries added
+/// as dependencies whose every dependent is being removed (transitively).
+/// Entries the user added themselves are never orphans, and an entry that was
+/// already unneeded before this removal isn't swept up by it.
+pub fn plan_removal(pack: &Pack, removing: &[String]) -> Vec<String> {
+    use std::collections::HashSet;
+    let removing: HashSet<&String> = removing.iter().collect();
+    // Anchors: what stays and isn't an ordinary dependency (user-added mods,
+    // payload mods, and dependencies that were already unneeded before).
+    let mut kept: HashSet<&String> = pack
+        .entries
+        .iter()
+        .filter(|(k, e)| !removing.contains(k) && (e.reason != Reason::Dependency || e.pulled_in_by.is_empty()))
+        .map(|(k, _)| k)
+        .collect();
+    // A dependency survives if anything kept still pulls it in (handles chains and cycles).
+    loop {
+        let before = kept.len();
+        for (k, e) in &pack.entries {
+            if !kept.contains(k) && !removing.contains(k) && e.pulled_in_by.iter().any(|p| kept.contains(p)) {
+                kept.insert(k);
+            }
+        }
+        if kept.len() == before {
+            break;
+        }
+    }
+    let mut orphans: Vec<String> = pack.entries.keys().filter(|k| !kept.contains(k) && !removing.contains(k)).cloned().collect();
+    orphans.sort_by(|a, b| pack.entries[a].display.name.cmp(&pack.entries[b].display.name).then(a.cmp(b)));
+    orphans
+}
+
 pub fn parse_project(text: &str) -> AppResult<(Pack, Vec<String>)> {
     let v: Value = serde_json::from_str(text).map_err(|e| AppError::Invalid(format!("That file isn't valid JSON: {e}")))?;
     if v.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
@@ -311,6 +359,7 @@ pub mod tests {
             loader: Loader::Neoforge,
             loader_version: "21.1.267".into(),
             source_preference: SourcePreference::Modrinth,
+            channel_policy: ChannelPolicy::Stable,
             icon: None,
             entries: BTreeMap::new(),
             choices: BTreeMap::new(),
@@ -318,6 +367,7 @@ pub mod tests {
             override_templates: vec![],
             applied_templates: vec![],
             snapshots: vec![],
+            dismissed_suggestions: vec![],
             created_at: "2026-11-24T00:00:00Z".into(),
             updated_at: "2026-11-24T00:00:00Z".into(),
             extra: Map::new(),
@@ -340,6 +390,30 @@ pub mod tests {
         assert_eq!(p.entries["d"].mod_ref.preferred, Source::Curseforge);
         assert_eq!(p.entries["d"].pulled_in_by, vec!["a"]);
         assert_eq!(notes.len(), 3);
+    }
+
+    #[test]
+    fn removal_finds_transitive_orphans_only() {
+        let mut p = pack();
+        let mut add = |k: &str, reason: Reason, by: &[&str]| {
+            let mut e = entry(Some(k), None, k, k);
+            e.reason = reason;
+            e.pulled_in_by = by.iter().map(|s| s.to_string()).collect();
+            p.entries.insert(k.into(), e);
+        };
+        add("extra", Reason::User, &[]);
+        add("iris", Reason::User, &[]);
+        add("sodium", Reason::Dependency, &["extra", "iris"]); // still needed by iris
+        add("lib", Reason::Dependency, &["extra"]);
+        add("deeplib", Reason::Dependency, &["lib"]); // orphaned transitively
+        add("userlib", Reason::User, &[]); // user-added, never an orphan
+        add("already", Reason::Dependency, &[]); // unneeded before; not swept up
+        add("cycle_a", Reason::Dependency, &["extra", "cycle_b"]);
+        add("cycle_b", Reason::Dependency, &["cycle_a"]);
+        let orphans = plan_removal(&p, &["extra".into()]);
+        assert_eq!(orphans, vec!["cycle_a", "cycle_b", "deeplib", "lib"]);
+        let orphans = plan_removal(&p, &["extra".into(), "iris".into()]);
+        assert!(orphans.contains(&"sodium".to_string()));
     }
 
     #[test]

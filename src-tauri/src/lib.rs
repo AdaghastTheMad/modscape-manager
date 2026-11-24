@@ -1,13 +1,14 @@
 //! Modpack Planner core. Every network call, all storage and all secrets live
 //! here; the webview only talks to these typed commands.
 
-mod error;
-mod fetch;
-mod keychain;
-mod loaders;
-mod model;
-mod sources;
-mod store;
+pub mod error;
+pub mod fetch;
+pub mod keychain;
+pub mod loaders;
+pub mod model;
+pub mod resolve;
+pub mod sources;
+pub mod store;
 
 use base64::Engine;
 use error::{AppError, AppResult};
@@ -26,14 +27,14 @@ use tauri_plugin_opener::OpenerExt;
 pub const USER_AGENT: &str = concat!("modpack-planner/", env!("CARGO_PKG_VERSION"));
 
 pub struct AppState {
-    db: Arc<Db>,
-    fetcher: Arc<Fetcher>,
-    modrinth: Modrinth,
-    curseforge: CurseForge,
+    pub db: Arc<Db>,
+    pub fetcher: Arc<Fetcher>,
+    pub modrinth: Modrinth,
+    pub curseforge: CurseForge,
 }
 
 impl AppState {
-    fn new(db: Db) -> Self {
+    pub fn new(db: Db) -> Self {
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .timeout(std::time::Duration::from_secs(20))
@@ -46,7 +47,7 @@ impl AppState {
         Self { modrinth: Modrinth::new(fetcher.clone()), curseforge: CurseForge::new(fetcher.clone()), db, fetcher }
     }
 
-    fn source(&self, s: Source) -> &dyn ModSource {
+    pub fn source(&self, s: Source) -> &dyn ModSource {
         match s {
             Source::Modrinth => &self.modrinth,
             Source::Curseforge => &self.curseforge,
@@ -125,6 +126,29 @@ async fn loader_versions(state: St<'_>, loader: Loader, mc_version: String, forc
 #[tauri::command]
 async fn icon(state: St<'_>, url: String) -> AppResult<String> {
     state.fetcher.icon_data_url(&url).await
+}
+
+// ---------------- resolver ----------------
+#[tauri::command]
+async fn analyze_pack(state: St<'_>, pack: Pack, force: Option<bool>) -> AppResult<resolve::Analysis> {
+    Ok(resolve::analyze(&pack, &state.modrinth, force.unwrap_or(false), store::now_secs()).await)
+}
+
+#[tauri::command]
+async fn plan_add(state: St<'_>, pack: Pack, project_id: String, pin_version: Option<String>, for_key: Option<String>, added_at: String) -> AppResult<resolve::AddPlan> {
+    resolve::plan_add(&pack, &project_id, pin_version.as_deref(), for_key.as_deref(), &state.modrinth, false, &added_at, || uuid::Uuid::new_v4().to_string()).await
+}
+
+#[tauri::command]
+fn plan_removal(pack: Pack, keys: Vec<String>) -> Vec<String> {
+    model::plan_removal(&pack, &keys)
+}
+
+#[tauri::command]
+async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, loader: Loader) -> AppResult<Vec<resolve::FileInfo>> {
+    use resolve::Catalog;
+    let vs = state.modrinth.versions(&project_id, &mc_version, loader, false).await?;
+    Ok(resolve::compatible_files(&vs, &mc_version, loader))
 }
 
 // ---------------- packs ----------------
@@ -266,6 +290,10 @@ pub fn run() {
             game_versions,
             loader_versions,
             icon,
+            analyze_pack,
+            plan_add,
+            plan_removal,
+            entry_versions,
             list_packs,
             get_pack,
             save_pack,
@@ -327,6 +355,18 @@ mod live {
             let icon = st.fetcher.icon_data_url(d.icon_url.as_deref().unwrap()).await.expect("icon");
             println!("icon: {}… ({} chars)", &icon[..30], icon.len());
             assert!(st.fetcher.icon_data_url("https://example.com/x.png").await.is_err());
+            // Resolver end to end against the live API.
+            let mut pack: Pack = serde_json::from_value(serde_json::json!({
+                "id": "live", "name": "Live", "mcVersion": "1.21.1", "loader": "fabric"
+            })).unwrap();
+            let plan = resolve::plan_add(&pack, "PtjYWJkn", None, None, &st.modrinth, false, "t", || uuid::Uuid::new_v4().to_string()).await.expect("plan");
+            println!("plan_add sodium-extra: {} additions {:?}, {} suggestions, notes {:?}",
+                plan.additions.len(), plan.additions.iter().map(|a| &a.entry.display.name).collect::<Vec<_>>(), plan.suggestions.len(), plan.notes);
+            for a in plan.additions { pack.entries.insert(a.key, a.entry); }
+            let an = resolve::analyze(&pack, &st.modrinth, false, store::now_secs()).await;
+            println!("analyze: complete={} issues={:?}", an.complete, an.issues.iter().map(|i| (i.kind, &i.message)).collect::<Vec<_>>());
+            assert!(an.complete);
+            assert!(!an.issues.iter().any(|i| i.kind == "missing_dependency"));
             println!("cache: {:?}", st.db.cache_stats().unwrap());
         });
     }

@@ -1,7 +1,7 @@
 // Typed wrappers over the Rust core's Tauri commands. The webview makes no
 // network calls of its own; everything goes through here.
 import { invoke } from "@tauri-apps/api/core";
-import type { Pack, PackSummary } from "./model";
+import type { Pack, PackEntry, PackSummary } from "./model";
 
 export type Source = "modrinth" | "curseforge";
 export type Loader = "neoforge" | "fabric" | "forge" | "quilt";
@@ -66,6 +66,24 @@ export interface AppInfo { version: string; userAgent: string; os: string; allow
 export interface Saved { pack: Pack; notes: string[] }
 export interface CacheStats { entries: number; bytes: number }
 
+// ---- resolver ----
+export interface FileInfo { versionId: string; versionNumber: string; versionType: string; datePublished: string; filename?: string | null; loaders: string[]; pinned: boolean }
+export interface DepLink { projectId: string; name: string; inPack?: string | null; versionId?: string | null }
+export interface EntryReport { file?: FileInfo | null; required: DepLink[]; optional: DepLink[]; incompatible: DepLink[]; requiredBy: string[]; checked: boolean }
+export type Severity = "error" | "warning" | "info";
+export type Fix =
+  | { kind: "addProject"; projectId: string; name: string; pinVersion?: string | null; forKey?: string | null }
+  | { kind: "remove"; key: string }
+  | { kind: "unpin"; key: string }
+  | { kind: "pinTo"; key: string; versionId: string; versionNumber: string };
+export interface Issue { id: string; severity: Severity; kind: string; entryKey?: string | null; otherKey?: string | null; message: string; fix?: Fix | null }
+export interface Suggestion { projectId: string; name: string; summary: string; iconUrl?: string | null; suggestedBy: string[] }
+export interface Analysis { entries: Record<string, EntryReport>; issues: Issue[]; suggestions: Suggestion[]; complete: boolean }
+export interface AddPlan {
+  rootKey: string; additions: { key: string; entry: PackEntry }[]; links: { key: string; parent: string }[];
+  promote?: string | null; suggestions: Suggestion[]; notes: string[];
+}
+
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 function toAppError(e: unknown): AppError {
@@ -100,6 +118,12 @@ export const api = {
   exportProject: (pack: Pack) => call<string | null>("export_project", { pack, exportedAt: new Date().toISOString() }),
   importProject: () => call<Saved | null>("import_project"),
   pickIcon: () => call<string | null>("pick_icon"),
+  analyzePack: (pack: Pack, force = false) => call<Analysis>("analyze_pack", { pack, force }),
+  /** forKey: add it as a dependency of that entry instead of as the user's own pick. */
+  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null) =>
+    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, addedAt: new Date().toISOString() }),
+  planRemoval: (pack: Pack, keys: string[]) => call<string[]>("plan_removal", { pack, keys }),
+  entryVersions: (projectId: string, mcVersion: string, loader: Loader) => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader }),
   cacheStats: () => call<CacheStats>("cache_stats"),
   clearCache: () => call<CacheStats>("clear_cache"),
   openExternal: (url: string) => call<void>("open_external", { url }),

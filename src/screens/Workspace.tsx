@@ -1,265 +1,43 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type AppError, type Category, type ProjectDetails, type SearchHit, type SearchPage, type Sort } from "../api";
-import { Button, ErrorNotice, Input, ModIcon, Notice, Panel, Select, SourceBadge, Tabs, Tooltip } from "../components/kit";
-import { Markdown } from "../components/Markdown";
-import { fmtCompact, fmtDate, typingIn, useDebounced } from "../hooks";
-import { entryFromHit, findEntry, isLibrary, loaderLabel, nowIso, prettyCategory, type Pack, type PackEntry } from "../model";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, type AddPlan, type Analysis, type AppError, type Fix, type SearchHit, type Suggestion } from "../api";
+import { Button, ErrorNotice, Modal, Notice, Select } from "../components/kit";
+import { typingIn } from "../hooks";
+import { applyPlan, entryFromHit, entryName, findEntry, loaderLabel, nowIso, syncPulledInBy, type ChannelPolicy, type Pack, type PackEntry } from "../model";
+import { Browse } from "./workspace/Browse";
+import { Details, type Selection } from "./workspace/Details";
+import { PackList } from "./workspace/PackList";
 
-type Selection = { kind: "hit"; hit: SearchHit } | { kind: "entry"; key: string } | null;
+type AddNotice = { title: string; lines: string[]; suggestions: Suggestion[]; tone: "ok" | "warn" | "error" };
 
-// ======================================================================= Browse
-function Browse({ pack, onAdd, onSelect, selectedId, searchRef }: {
-  pack: Pack; onAdd: (h: SearchHit) => void; onSelect: (h: SearchHit) => void; selectedId?: string;
-  searchRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const [text, setText] = useState("");
-  const [category, setCategory] = useState("");
-  const [side, setSide] = useState<"" | "client" | "server">("");
-  const [sort, setSort] = useState<Sort>("relevance");
-  const [showIncompatible, setShowIncompatible] = useState(false);
-  const [cats, setCats] = useState<Category[]>([]);
-  const [page, setPage] = useState<SearchPage | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [highlight, setHighlight] = useState(0);
-  const q = useDebounced(text, 300);
-  const reqId = useRef(0);
-
-  useEffect(() => { api.categories().then(setCats, () => {}); }, []);
-
-  const run = useCallback(async (offset: number, force = false) => {
-    const id = ++reqId.current;
-    setBusy(true); setError(null);
-    try {
-      const res = await api.search("modrinth", {
-        text: q, gameVersion: pack.mcVersion, loader: pack.loader, categories: category ? [category] : [],
-        side: side || undefined, sort, includeIncompatible: showIncompatible, limit: 20, offset, force,
-      });
-      if (id !== reqId.current) return;
-      setPage((prev) => (offset > 0 && prev ? { ...res, hits: [...prev.hits, ...res.hits.filter((h) => !prev.hits.some((p) => p.id === h.id))] } : res));
-      if (offset === 0) setHighlight(0);
-    } catch (e) { if (id === reqId.current) setError(e as AppError); }
-    finally { if (id === reqId.current) setBusy(false); }
-  }, [q, pack.mcVersion, pack.loader, category, side, sort, showIncompatible]);
-
-  useEffect(() => { run(0); }, [run]);
-
-  const hits = page?.hits ?? [];
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((h) => Math.min(h + 1, hits.length - 1)); }
-    if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
-    if (e.key === "Enter" && hits[highlight]) { e.preventDefault(); onAdd(hits[highlight]); }
-  };
-  useEffect(() => { document.getElementById(`hit-${highlight}`)?.scrollIntoView({ block: "nearest" }); }, [highlight]);
-
-  return (
-    <Panel title="Browse" className="pane" actions={<SourceBadge source="modrinth" />}>
-      <div className="pane__fixed stack">
-        <Input ref={searchRef} placeholder="Search Modrinth…  ( / )" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
-          aria-label="Search mods" aria-controls="results" aria-activedescendant={hits[highlight] ? `hit-${highlight}` : undefined} />
-        <div className="filters">
-          <Select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">All categories</option>
-            {cats.map((c) => <option key={c.name} value={c.name}>{prettyCategory(c.name)}</option>)}
-          </Select>
-          <Select aria-label="Side" value={side} onChange={(e) => setSide(e.target.value as typeof side)}>
-            <option value="">Any side</option><option value="client">Works on client</option><option value="server">Works on server</option>
-          </Select>
-          <Select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-            <option value="relevance">Relevance</option><option value="downloads">Downloads</option><option value="follows">Follows</option>
-            <option value="updated">Last updated</option><option value="newest">Newest</option>
-          </Select>
-        </div>
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <label className="mc-check"><input type="checkbox" checked={showIncompatible} onChange={(e) => setShowIncompatible(e.target.checked)} /> Show incompatible</label>
-          <Button size="small" onClick={() => run(0, true)} disabled={busy} title="Bypass the 24 h cache">Refresh</Button>
-        </div>
-        {error && <ErrorNotice error={error} />}
-        {page?.freshness?.stale && <Notice title="Offline: showing saved results">From {new Date(page.freshness.fetchedAt * 1000).toLocaleString()}.</Notice>}
-        <div className="muted" style={{ fontSize: 12 }}>
-          {page ? (showIncompatible
-            ? `${fmtCompact.format(page.total)} results on any version · greyed ones have no ${pack.mcVersion} ${loaderLabel(pack.loader)} build`
-            : `${fmtCompact.format(page.total)} results for ${pack.mcVersion} · ${loaderLabel(pack.loader)}`) : busy ? "Searching…" : ""}
-        </div>
-      </div>
-      <div className="pane__body stack">
-        <ul id="results" className="hit-list" role="listbox" aria-label="Search results">
-          {hits.map((h, i) => {
-            const inPack = !!findEntry(pack, h.source, h.id);
-            const incompatible = h.compatible === false;
-            return (
-              <li key={h.id} id={`hit-${i}`} role="option" aria-selected={i === highlight}
-                className={`hit${i === highlight ? " hit--hl" : ""}${incompatible ? " hit--incompatible" : ""}${selectedId === h.id ? " hit--sel" : ""}`}
-                onMouseEnter={() => setHighlight(i)} onClick={() => onSelect(h)}>
-                <Tooltip name={h.name} badge={<SourceBadge source={h.source} />} lines={[
-                  h.summary, `${fmtCompact.format(h.downloads)} downloads`, `Updated ${fmtDate(h.updated)}`, `License: ${h.license ?? "unknown"}`,
-                  ...(incompatible ? [`No build for ${pack.mcVersion} · ${loaderLabel(pack.loader)}`] : []),
-                ]}>
-                  <ModIcon url={h.iconUrl} label={h.name} size={40} />
-                </Tooltip>
-                <div className="grow">
-                  <div className="hit__name">{h.name}</div>
-                  <div className="hit__meta">{h.authors[0] ?? "unknown"} · {fmtCompact.format(h.downloads)}{incompatible ? " · incompatible" : ""}</div>
-                </div>
-                <Button size="small" variant={inPack ? "default" : "primary"} disabled={inPack}
-                  onClick={(e) => { e.stopPropagation(); onAdd(h); }} aria-label={inPack ? `${h.name} is in the pack` : `Add ${h.name}`}>
-                  {inPack ? "✓" : "+"}
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-        {page && hits.length < page.total && <Button onClick={() => run(hits.length)} disabled={busy}>{busy ? "Loading…" : "Load more"}</Button>}
-        {page && hits.length === 0 && !busy && <div className="empty-state"><p>No mods match. Try another search, or tick "Show incompatible".</p></div>}
-      </div>
-    </Panel>
-  );
-}
-
-// ===================================================================== PackList
-function groupOf(e: PackEntry): string {
-  if (isLibrary(e)) return "library";
-  return e.display.categories.find((c) => c !== "library") ?? "uncategorized";
-}
-
-function PackList({ pack, selectedKey, onSelect, onRemove, undo }: {
-  pack: Pack; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
-  undo: { label: string; run: () => void } | null;
-}) {
-  const groups = useMemo(() => {
-    const m = new Map<string, [string, PackEntry][]>();
-    for (const [k, e] of Object.entries(pack.entries)) {
-      const g = groupOf(e);
-      m.set(g, [...(m.get(g) ?? []), [k, e]]);
-    }
-    for (const list of m.values()) list.sort((a, b) => a[1].display.name.localeCompare(b[1].display.name));
-    return [...m.entries()].sort((a, b) => (a[0] === "library" ? 1 : b[0] === "library" ? -1 : a[0].localeCompare(b[0])));
-  }, [pack.entries]);
-  const count = Object.keys(pack.entries).length;
-
-  return (
-    <Panel className="pane" title={`Pack · ${count} mod${count === 1 ? "" : "s"}`} actions={
-      <Tabs label="View" value="list" onChange={() => {}} tabs={[{ id: "list", label: "List" }, { id: "graph", label: "Graph (M7)", disabled: true }]} />
-    }>
-      <div className="pane__body stack">
-        {undo && <Notice title={undo.label}><Button size="small" onClick={undo.run}>Undo</Button></Notice>}
-        {count === 0 ? (
-          <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Search on the left and press + (or Enter) to add mods.</p></div></div>
-        ) : groups.map(([g, list]) => (
-          <section key={g} className={g === "library" ? "group group--lib" : "group"}>
-            <h3 className="group__title">{g === "library" ? "Libraries" : prettyCategory(g)} <span className="muted">({list.length})</span></h3>
-            <ul className="entry-list">
-              {list.map(([k, e]) => (
-                <li key={k} className={`entry${selectedKey === k ? " entry--sel" : ""}`} tabIndex={0} aria-selected={selectedKey === k}
-                  onClick={() => onSelect(k)} onFocus={() => onSelect(k)}>
-                  <ModIcon url={e.display.iconUrl} label={e.display.name} size={36} selected={selectedKey === k} />
-                  <div className="grow">
-                    <div className="hit__name">{e.display.name}</div>
-                    <div className="hit__meta">{e.display.categories.map(prettyCategory).join(", ") || "no category"}</div>
-                  </div>
-                  <SourceBadge source={e.ref.preferred} />
-                  <Button size="small" variant="danger" aria-label={`Remove ${e.display.name}`} onClick={(ev) => { ev.stopPropagation(); onRemove(k); }}>✕</Button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-// ====================================================================== Details
-function Details({ pack, selection, onAdd, onRemove, onToggleLibrary }: {
-  pack: Pack; selection: Selection; onAdd: (h: SearchHit) => void; onRemove: (k: string) => void;
-  onToggleLibrary: (k: string, value: boolean) => void;
-}) {
-  const ref = selection?.kind === "hit" ? { source: selection.hit.source, id: selection.hit.id }
-    : selection?.kind === "entry" && pack.entries[selection.key] ? (() => {
-      const r = pack.entries[selection.key].ref;
-      return r.preferred === "modrinth" && r.modrinthId ? { source: "modrinth" as const, id: r.modrinthId } : { source: r.preferred, id: String(r.curseforgeId ?? r.modrinthId) };
-    })() : null;
-  const [details, setDetails] = useState<ProjectDetails | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
-
-  useEffect(() => {
-    setDetails(null); setError(null);
-    if (!ref) return;
-    let live = true;
-    api.projectDetails(ref.source, ref.id).then((d) => live && setDetails(d), (e) => live && setError(e));
-    return () => { live = false; };
-  }, [ref?.source, ref?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!ref) return <Panel className="pane" title="Details"><div className="empty-state"><p>Select a mod to see its details here.</p></div></Panel>;
-  const key = findEntry(pack, ref.source, ref.id);
-  const fallback = selection?.kind === "hit" ? selection.hit : null;
-  const name = details?.name ?? fallback?.name ?? pack.entries[key ?? ""]?.display.name ?? "";
-  const supports = details && {
-    version: details.gameVersions.includes(pack.mcVersion),
-    loader: details.loaders.includes(pack.loader) || (pack.loader === "quilt" && details.loaders.includes("fabric")),
-  };
-
-  return (
-    <Panel className="pane" title="Details">
-      <div className="pane__body stack-lg">
-        <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
-          <ModIcon url={details?.iconUrl ?? fallback?.iconUrl} label={name} size={64} />
-          <div className="grow stack" style={{ gap: 4 }}>
-            <h2 style={{ margin: 0 }}>{name}</h2>
-            <div className="row"><SourceBadge source={ref.source} />
-              {details && <span className="muted" style={{ fontSize: 12 }}>{fmtCompact.format(details.downloads)} downloads · {fmtCompact.format(details.follows)} follows</span>}</div>
-          </div>
-        </div>
-        <div className="row">
-          {key && (() => { const lib = isLibrary(pack.entries[key]); return (
-            <Button onClick={() => onToggleLibrary(key, !lib)} title="Libraries are dimmed and grouped at the bottom">
-              {lib ? "Not a library" : "Treat as library"}
-            </Button>); })()}
-          {key ? <Button variant="danger" onClick={() => onRemove(key)}>Remove from pack</Button>
-            : fallback && <Button variant="primary" onClick={() => onAdd(fallback)}>Add to pack</Button>}
-          {details && <Button onClick={() => api.openExternal(details.pageUrl)}>Open on Modrinth ↗</Button>}
-        </div>
-        {error && <ErrorNotice error={error} />}
-        {!details && !error && <p className="muted">Loading…</p>}
-        {details && (
-          <>
-            {supports && (!supports.version || !supports.loader) && (
-              <Notice tone="error" title={`No ${!supports.version ? pack.mcVersion : loaderLabel(pack.loader)} build listed`}>
-                This mod lists {details.loaders.join(", ") || "no loaders"} for {details.gameVersions.length} game versions.
-              </Notice>
-            )}
-            <p>{details.summary}</p>
-            <dl className="facts">
-              <dt>License</dt><dd>{details.license ? (details.license.name || details.license.id) : "unknown"}</dd>
-              <dt>Updated</dt><dd>{fmtDate(details.updated)}</dd>
-              <dt>Loaders</dt><dd>{details.loaders.join(", ") || "none listed"}</dd>
-              <dt>Client / server</dt><dd>{details.clientSide ?? "?"} / {details.serverSide ?? "?"}</dd>
-              <dt>Categories</dt><dd>{details.categories.map(prettyCategory).join(", ") || "none"}</dd>
-            </dl>
-            {details.links.length > 0 && <div className="row">{details.links.map(([l, u]) => <Button key={l} size="small" onClick={() => api.openExternal(u)}>{l} ↗</Button>)}</div>}
-            <Markdown source={details.body} />
-            {details.freshness.stale && <p className="muted" style={{ fontSize: 12 }}>Offline: saved copy from {new Date(details.freshness.fetchedAt * 1000).toLocaleString()}.</p>}
-          </>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
-// ==================================================================== Workspace
 export function Workspace({ packId, onClose }: { packId: string; onClose: () => void }) {
   const [pack, setPack] = useState<Pack | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [saveState, setSaveState] = useState<"saved" | "pending" | "error">("saved");
   const [selection, setSelection] = useState<Selection>(null);
   const [undo, setUndo] = useState<{ label: string; run: () => void } | null>(null);
+  const [notice, setNotice] = useState<AddNotice | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [orphanPrompt, setOrphanPrompt] = useState<{ keys: string[]; orphans: string[]; picked: Set<string> } | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const dirty = useRef(false);
   const latest = useRef<Pack | null>(null);
+  const analysisRun = useRef(0);
 
   useEffect(() => { api.getPack(packId).then(setPack, setError); }, [packId]);
 
-  // Autosave: debounce changes, flush on close.
+  // State updaters must stay pure (React may run them twice), so anything
+  // random or time-based is computed before calling update().
+  useEffect(() => { latest.current = pack; }, [pack]);
+  const update = useCallback((fn: (p: Pack) => Pack) => {
+    const at = nowIso();
+    setPack((p) => (p ? { ...fn(p), updatedAt: at } : p));
+    dirty.current = true;
+    setSaveState("pending");
+  }, []);
+
+  // ---- autosave
   const flush = useCallback(async () => {
     if (!dirty.current || !latest.current) return;
     dirty.current = false;
@@ -273,45 +51,169 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
   }, [pack, flush]);
   useEffect(() => () => { flush(); }, [flush]);
 
-  // State updaters must stay pure (React may run them twice), so anything
-  // random or time-based is computed before calling update().
-  useEffect(() => { latest.current = pack; }, [pack]);
-  const update = useCallback((fn: (p: Pack) => Pack) => {
-    const at = nowIso();
-    setPack((p) => (p ? { ...fn(p), updatedAt: at } : p));
-    dirty.current = true;
-    setSaveState("pending");
-  }, []);
-
-  const add = useCallback((h: SearchHit) => {
-    const key = crypto.randomUUID();
-    const entry = entryFromHit(h);
-    update((p) => (findEntry(p, h.source, h.id) ? p : { ...p, entries: { ...p.entries, [key]: entry } }));
-  }, [update]);
-
-  const remove = useCallback((key: string) => {
+  // ---- continuous checks: re-run shortly after the mod list or target changes
+  const runAnalysis = useCallback(async (force = false) => {
     const p = latest.current;
-    const entry = p?.entries[key];
-    if (!entry) return;
-    update((p) => { const { [key]: _, ...rest } = p.entries; return { ...p, entries: rest }; });
-    setSelection((s) => (s?.kind === "entry" && s.key === key ? null : s));
-    setUndo({ label: `Removed ${entry.display.name}`, run: () => { update((p) => ({ ...p, entries: { ...p.entries, [key]: entry } })); setUndo(null); } });
+    if (!p) return;
+    const run = ++analysisRun.current;
+    setAnalyzing(true);
+    try {
+      const a = await api.analyzePack(p, force);
+      if (run !== analysisRun.current) return; // a newer check superseded this one
+      setAnalysis(a);
+      // Keep "pulled in by" true to what files actually require.
+      const synced = syncPulledInBy(p, a);
+      if (synced && latest.current === p) {
+        setPack((cur) => (cur === p ? synced : cur));
+        dirty.current = true;
+      }
+    } catch (e) {
+      if (run === analysisRun.current) setError(e as AppError);
+    } finally {
+      if (run === analysisRun.current) setAnalyzing(false);
+    }
+  }, []);
+  const analysisInputs = pack && JSON.stringify([
+    pack.mcVersion, pack.loader, pack.channelPolicy, pack.dismissedSuggestions,
+    Object.entries(pack.entries).map(([k, e]) => [k, e.ref, e.fileId, e.reason]),
+  ]);
+  useEffect(() => {
+    if (!analysisInputs) return;
+    const t = setTimeout(() => runAnalysis(false), 600);
+    return () => clearTimeout(t);
+  }, [analysisInputs, runAnalysis]);
+
+  // ---- adding (with dependencies)
+  const describePlan = (p: Pack, plan: AddPlan): AddNotice => {
+    const root = plan.additions.find((a) => a.key === plan.rootKey)?.entry.display.name ?? entryName(p, plan.rootKey);
+    const deps = plan.additions.filter((a) => a.key !== plan.rootKey).map((a) => a.entry.display.name);
+    const lines = [
+      ...(deps.length ? [`Also added ${deps.length} required ${deps.length === 1 ? "dependency" : "dependencies"}: ${deps.join(", ")}.`] : []),
+      ...(plan.links.length ? [`Uses ${plan.links.length} mod${plan.links.length === 1 ? "" : "s"} already in the pack.`] : []),
+      ...plan.notes,
+    ];
+    return { title: plan.promote ? `${root} is now marked as added by you` : `Added ${root}`, lines, suggestions: plan.suggestions, tone: plan.notes.length ? "warn" : "ok" };
+  };
+
+  const addProject = useCallback(async (projectId: string, pin?: string | null, hit?: SearchHit, forKey?: string | null) => {
+    const p = latest.current;
+    if (!p || pending.has(projectId)) return;
+    setPending((s) => new Set(s).add(projectId));
+    try {
+      const plan = await api.planAdd(p, projectId, pin, forKey);
+      update((cur) => applyPlan(cur, plan));
+      setNotice(describePlan(p, plan));
+      if (!forKey) setSelection({ kind: "entry", key: plan.rootKey });
+    } catch (e) {
+      const err = e as AppError;
+      if (hit) {
+        // Offline or API trouble: still add the mod; the checks will list what's missing.
+        const key = crypto.randomUUID();
+        const entry = entryFromHit(hit);
+        update((cur) => (findEntry(cur, hit.source, hit.id) ? cur : { ...cur, entries: { ...cur.entries, [key]: entry } }));
+        setNotice({ title: `Added ${hit.name} without its dependencies`, lines: [err.message, "Checks will list anything missing once the connection is back."], suggestions: [], tone: "warn" });
+      } else {
+        setNotice({ title: "Couldn't add that mod", lines: [err.message, ...(err.help ? [err.help] : [])], suggestions: [], tone: "error" });
+      }
+    } finally {
+      setPending((s) => { const n = new Set(s); n.delete(projectId); return n; });
+    }
+  }, [pending, update]);
+
+  const addHit = useCallback((h: SearchHit) => {
+    if (h.source === "modrinth") addProject(h.id, null, h);
+    else {
+      const key = crypto.randomUUID();
+      const entry = entryFromHit(h);
+      update((p) => (findEntry(p, h.source, h.id) ? p : { ...p, entries: { ...p.entries, [key]: entry } }));
+    }
+  }, [addProject, update]);
+
+  // ---- removing (with orphan cleanup)
+  const removeKeys = useCallback((keys: string[]) => {
+    const p = latest.current;
+    if (!p) return;
+    const removed: [string, PackEntry][] = keys.filter((k) => p.entries[k]).map((k) => [k, p.entries[k]]);
+    if (!removed.length) return;
+    update((cur) => {
+      const entries = { ...cur.entries };
+      for (const [k] of removed) delete entries[k];
+      for (const [k, e] of Object.entries(entries)) {
+        if (e.pulledInBy.some((x) => keys.includes(x))) entries[k] = { ...e, pulledInBy: e.pulledInBy.filter((x) => !keys.includes(x)) };
+      }
+      return { ...cur, entries };
+    });
+    setSelection((s) => (s?.kind === "entry" && keys.includes(s.key) ? null : s));
+    const label = removed.length === 1 ? `Removed ${removed[0][1].display.name}` : `Removed ${removed[0][1].display.name} and ${removed.length - 1} more`;
+    setUndo({
+      label,
+      run: () => {
+        update((cur) => {
+          const entries = { ...cur.entries };
+          for (const [k, e] of removed) if (!entries[k]) entries[k] = e;
+          return { ...cur, entries };
+        });
+        setUndo(null);
+      },
+    });
   }, [update]);
+
+  const remove = useCallback(async (key: string) => {
+    const p = latest.current;
+    if (!p?.entries[key]) return;
+    let orphans: string[] = [];
+    try { orphans = await api.planRemoval(p, [key]); } catch { /* no cleanup offer, just remove */ }
+    if (orphans.length) setOrphanPrompt({ keys: [key], orphans, picked: new Set(orphans) });
+    else removeKeys([key]);
+  }, [removeKeys]);
   useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 10000); return () => clearTimeout(t); }, [undo]);
 
-  // Keyboard: "/" focuses search; Delete/Backspace removes the selected pack entry.
+  // ---- fixes and small edits
+  const pin = useCallback((key: string, versionId: string | null) => {
+    update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: { ...p.entries[key], fileId: versionId ?? undefined } } } : p));
+  }, [update]);
+  const applyFix = useCallback((f: Fix) => {
+    switch (f.kind) {
+      case "addProject": return void addProject(f.projectId, f.pinVersion, undefined, f.forKey);
+      case "remove": return void remove(f.key);
+      case "unpin": return pin(f.key, null);
+      case "pinTo": return pin(f.key, f.versionId);
+    }
+  }, [addProject, remove, pin]);
+  const dismiss = useCallback((s: Suggestion) => {
+    update((p) => (p.dismissedSuggestions.includes(s.projectId) ? p : { ...p, dismissedSuggestions: [...p.dismissedSuggestions, s.projectId] }));
+  }, [update]);
+
+  // ---- keyboard: "/" focuses search; Delete/Backspace removes the selected entry
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typingIn(e)) return;
+      if (typingIn(e) || orphanPrompt) return;
       if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
       if ((e.key === "Delete" || e.key === "Backspace") && selection?.kind === "entry") { e.preventDefault(); remove(selection.key); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selection, remove]);
+  }, [selection, remove, orphanPrompt]);
 
   if (error && !pack) return <ErrorNotice error={error} />;
   if (!pack) return <p className="muted">Opening pack…</p>;
+
+  const noticeEl = notice && (
+    <Notice tone={notice.tone === "error" ? "error" : notice.tone === "ok" ? "ok" : "warn"} title={notice.title}>
+      {notice.lines.map((l, i) => <div key={i}>{l}</div>)}
+      {notice.suggestions.filter((s) => !findEntry(pack, "modrinth", s.projectId)).length > 0 && (
+        <div className="stack" style={{ gap: 4, marginTop: 6 }}>
+          <span className="muted">Optional extras:</span>
+          <div className="row">
+            {notice.suggestions.filter((s) => !findEntry(pack, "modrinth", s.projectId)).map((s) => (
+              <Button key={s.projectId} size="small" onClick={() => addProject(s.projectId)} title={s.summary}>+ {s.name}</Button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{ marginTop: 6 }}><Button size="small" onClick={() => setNotice(null)}>OK</Button></div>
+    </Notice>
+  );
 
   return (
     <div className="workspace-wrap">
@@ -320,20 +222,55 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
         <h2 style={{ margin: 0 }}>{pack.name}</h2>
         <span className="muted">Minecraft {pack.mcVersion} · {loaderLabel(pack.loader)} {pack.loaderVersion}</span>
         <span className="grow" />
+        <Select aria-label="Which builds unpinned mods use" title="Applies to every mod that isn't pinned to a version"
+          value={pack.channelPolicy ?? "stable"} onChange={(e) => { const v = e.target.value as ChannelPolicy; update((p) => ({ ...p, channelPolicy: v })); }}>
+          <option value="stable">Builds: releases first</option>
+          <option value="newest">Builds: newest (incl. beta/alpha)</option>
+        </Select>
         <span className={saveState === "error" ? "err" : "muted"} style={{ fontSize: 12 }} aria-live="polite">
           {saveState === "saved" ? "All changes saved" : saveState === "pending" ? "Saving…" : "Save failed"}
         </span>
         <Button size="small" onClick={async () => { await flush(); try { await api.exportProject(latest.current!); } catch (e) { setError(e as AppError); } }}>Save as file…</Button>
       </div>
-      {error && <ErrorNotice error={error} />}
+      {error && <div className="row"><div className="grow"><ErrorNotice error={error} /></div><Button size="small" onClick={() => setError(null)}>Dismiss</Button></div>}
       <div className="workspace">
-        <Browse pack={pack} onAdd={add} searchRef={searchRef} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
+        <Browse pack={pack} onAdd={addHit} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
           onSelect={(h) => { const k = findEntry(pack, h.source, h.id); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />
-        <PackList pack={pack} undo={undo} selectedKey={selection?.kind === "entry" ? selection.key : undefined}
-          onSelect={(k) => setSelection({ kind: "entry", key: k })} onRemove={remove} />
-        <Details pack={pack} selection={selection} onAdd={add} onRemove={remove}
+        <PackList pack={pack} analysis={analysis} analyzing={analyzing} undo={undo} notice={noticeEl}
+          selectedKey={selection?.kind === "entry" ? selection.key : undefined}
+          onSelect={(k) => setSelection({ kind: "entry", key: k })} onRemove={remove} onFix={applyFix}
+          onRecheck={() => runAnalysis(true)} onSuggest={(s) => addProject(s.projectId)} onDismiss={dismiss} />
+        <Details pack={pack} analysis={analysis} selection={selection} onAdd={addHit} onAddProject={(id, pv, forKey) => addProject(id, pv, undefined, forKey)}
+          onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {orphanPrompt && (
+        <Modal title="Remove unneeded dependencies too?" width={520} onClose={() => setOrphanPrompt(null)}>
+          <div className="stack-lg">
+            <p>Removing <strong>{entryName(pack, orphanPrompt.keys[0])}</strong> leaves {orphanPrompt.orphans.length === 1 ? "this dependency" : "these dependencies"} with nothing in the pack that needs {orphanPrompt.orphans.length === 1 ? "it" : "them"}:</p>
+            <ul className="dep-list">
+              {orphanPrompt.orphans.map((k) => (
+                <li key={k}>
+                  <label className="mc-check">
+                    <input type="checkbox" checked={orphanPrompt.picked.has(k)} onChange={(e) => {
+                      const picked = new Set(orphanPrompt.picked);
+                      if (e.target.checked) picked.add(k); else picked.delete(k);
+                      setOrphanPrompt({ ...orphanPrompt, picked });
+                    }} />
+                    {entryName(pack, k)}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Button onClick={() => { removeKeys(orphanPrompt.keys); setOrphanPrompt(null); }}>Keep them</Button>
+              <Button variant="danger" autoFocus onClick={() => { removeKeys([...orphanPrompt.keys, ...orphanPrompt.picked]); setOrphanPrompt(null); }}>
+                Remove {orphanPrompt.picked.size ? `${orphanPrompt.picked.size + 1} mods` : "just this one"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

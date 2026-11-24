@@ -83,11 +83,11 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 12. **Installers** — `scripts/build.sh` → `.deb`, `.AppImage`, `.dmg`.
 13. **Server variant** (nice-to-have).
 
-**Status:** M1 done (Nov 24, 2026, macOS). M2 built (Nov 24): awaiting owner's in-app test and review before M3. Linux Mint check still pending.
+**Status:** M1 done, M2 done (committed). M3 built (Nov 24): awaiting owner's in-app test and review before M4. Linux Mint check still pending.
 
 ## Running it
 - `scripts/setup.sh` (or `--check`) → `scripts/dev.sh` (hot reload). Rust comes from rustup in `~/.cargo` (dev.sh sources `~/.cargo/env`).
-- Rust tests: `cd src-tauri && cargo test`. Live API smoke test (not in the normal run): `cargo test live -- --ignored --nocapture`. Frontend: `pnpm typecheck`, `pnpm build`.
+- Rust tests: `cd src-tauri && cargo test`. Resolver tests run on recorded Modrinth responses in `src-tauri/tests/fixtures/resolver/` (`modrinth.json` from `python3 scripts/record-fixtures.py`, plus hand-written `synthetic.json` for cases real data lacks). Live API smoke test (not in the normal run): `cargo test live -- --ignored --nocapture`. Frontend: `pnpm typecheck`, `pnpm build`.
 - App data (SQLite `planner.db`: packs + API cache) lives in the OS app-data dir for `io.github.adaghastthemad.modpackplanner`.
 
 ## Implementation notes
@@ -96,6 +96,15 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 - Pack project files: `{ format: "modpack-planner-project", schemaVersion: 1, pack }`. Unknown fields are preserved (`extra`), newer schema versions are refused with a clear message, imports are normalised (duplicates, dangling links, missing ids) and re-id'd on collision.
 - NeoForge versions: 1.X.Y → `X.Y.*`, year-based 26.A.B → `26.A.B.*`. Quilt accepts Fabric mods in search/compat checks.
 - **Library detection:** user override wins; else a mod is a library if "library" is its only Modrinth category, or it has the tag and was pulled in as a dependency (Modrinth tags JEI/EMI as library too, so tags alone mislead).
+- **Resolver (`src-tauri/src/resolve.rs`)**, all behind the `Catalog` trait:
+  - File choice follows the pack's `channelPolicy`: `stable` (default) = newest *release* for (MC, loader), else newest beta, else alpha; `newest` = newest build of any channel. On Quilt a native Quilt build beats a Fabric one of the same rank. Toggle lives in the workspace bar. Pinned `fileId` wins; a pin for another version/loader or a deleted file is an error with an Unpin fix.
+  - Dependency pins (`version_id`) are honoured only when that exact version fits the pack; otherwise unpinned deps float to the newest compatible file. A floating dep that differs from a compatible pin → warning with "Pin X" fix.
+  - `plan_add` walks required deps breadth-first, cycle-safe, capped at 100 new entries; existing entries get links; deps that no longer exist are reported, never added; embedded deps ignored; optional deps become suggestions (dismissals stored in `pack.dismissedSuggestions`). Fixes for missing deps pass `forKey` so the new mod is recorded as that entry's dependency.
+  - `PROVIDES` table: QSL/QFAPI satisfies Fabric API on Quilt.
+  - Checks: missing dependency, incompatible (once per pair), no build, pin mismatch/missing, version mismatch, client-/server-only (info), stale >1 year (warning, skipped when pinned), unneeded dependency (info). Sorted error → warning → info.
+  - `pulledInBy` is re-synced from each complete analysis; incomplete analyses (offline, CurseForge-only entries) never sync and never mark anything unneeded.
+  - Orphan cleanup (`model::plan_removal`) is reachability-based: a dependency survives only if something kept still pulls it in, so chains and cycles are handled.
+- **Dev bridge (dev only, never shipped):** `cd src-tauri && cargo run --example dev_bridge` serves the real core on `127.0.0.1:1421`; point the Vite page's `window.__TAURI_INTERNALS__.invoke` at it (snippet in `examples/dev_bridge.rs`) to exercise the UI against real Rust in a plain browser. Packs live in memory; no keychain or dialogs.
 - React state updaters must stay pure (StrictMode runs them twice): generate ids/timestamps before calling `update()`.
 
 ## Rules (from "Instructions for Claude Code" + owner's hard rules)
@@ -115,5 +124,6 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 
 ## Decisions log
 - Nov 23, 2026: all items in the design doc's "Decided" list.
+- Nov 24, 2026 (M3 review): owner approved release-first default plus a per-pack "newest build" toggle, and optional-dependency suggestions.
 - Nov 24, 2026: it's a Tauri desktop app (the doc's "local web app" wording is stale). M1 is judged on macOS only; Mint later. setup.sh installs Rust via rustup (portable to other Macs). pnpm via corepack. git author AdaghastTheMad <355918907+AdaghastTheMad@users.noreply.github.com>. Data-model revisions above. Duplicate-to-version moved to M6. Starter payload names (Iris/Oculus Search, Roxy, Diorama, etc.) to be verified against live data at the payloads milestone.
 - Pixel font: Pixelify Sans (OFL, bundled via `@fontsource/pixelify-sans`; no runtime font fetch). Monocraft isn't on npm and could replace it later.
