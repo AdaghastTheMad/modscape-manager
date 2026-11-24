@@ -40,7 +40,7 @@ export function Overrides({ pack, overview, error, onUpdate, onSelect }: {
   return (
     <div className="pane__body stack-lg">
       <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-        Templates are copied into the export's overrides/ folder, in this order: when two have the same file, the one lower in the list wins. Edit templates on the Templates tab.
+        Templates are copied into the export's overrides/ folder, in priority order: when two have the same file, the one higher in the list wins (like resource packs in Minecraft). Edit templates on the Templates tab.
       </p>
       {(error || err) && <ErrorNotice error={(error ?? err)!} />}
       {overview?.updates.map((u) => (
@@ -70,8 +70,8 @@ export function Overrides({ pack, overview, error, onUpdate, onSelect }: {
                   <div className="hit__name">{name(id)}</div>
                   <div className="hit__meta">{t ? `${describeTemplate(t)} · v${t.version}` : "deleted from the library"}</div>
                 </div>
-                <Button size="small" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${name(id)} up`}>↑</Button>
-                <Button size="small" disabled={i === ids.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${name(id)} down (wins clashes)`}>↓</Button>
+                <Button size="small" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${name(id)} up (wins clashes)`}>↑</Button>
+                <Button size="small" disabled={i === ids.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${name(id)} down`}>↓</Button>
                 <Button size="small" variant="danger" onClick={() => detach(id)}>Detach</Button>
               </li>
             );

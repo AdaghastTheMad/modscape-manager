@@ -604,7 +604,8 @@ pub fn scan_source(p: &Path) -> AppResult<SourceScan> {
 #[serde(rename_all = "camelCase")]
 pub struct MergedFile {
     pub path: String,
-    /// Template ids that have this file, in pack order; the last one wins.
+    /// Template ids that have this file, lowest priority first: the last one
+    /// wins (it's the one highest in the pack's list).
     pub from: Vec<String>,
     pub size: u64,
 }
@@ -724,7 +725,8 @@ impl Library {
             }
         }
         let mut merged: BTreeMap<String, MergedFile> = BTreeMap::new();
-        for t in &attached {
+        // Top of the list wins (like resource packs in Minecraft), so apply bottom-up.
+        for t in attached.iter().rev() {
             for f in &t.files {
                 let m = merged.entry(f.path.clone()).or_insert(MergedFile { path: f.path.clone(), from: vec![], size: 0 });
                 m.from.push(t.id.clone());
@@ -748,7 +750,8 @@ impl Library {
     /// Files for `overrides/`, winners only: (relative path, file on disk).
     pub fn export_files(&self, pack: &Pack) -> AppResult<Vec<(String, PathBuf)>> {
         let mut out: BTreeMap<String, PathBuf> = BTreeMap::new();
-        for id in &pack.override_templates {
+        // Bottom-up, so the template at the top of the list wins clashes.
+        for id in pack.override_templates.iter().rev() {
             let Ok(dir) = self.files_dir(id) else { continue };
             if !self.dir(id)?.join("template.json").is_file() {
                 continue;
@@ -880,14 +883,15 @@ mod tests {
         let mut e = crate::model::tests::entry(Some("u6dRKJwZ"), None, "Just Enough Items", "t");
         e.display.slug = "jei".into();
         pack.entries.insert("k1".into(), e);
-        pack.override_templates = vec![a.id.clone(), b.id.clone(), "gone".into()];
+        // B is on top, so it wins the clash.
+        pack.override_templates = vec![b.id.clone(), a.id.clone(), "gone".into()];
         pack.applied_templates = vec![l.applied_ref(&a.id).unwrap(), l.applied_ref(&b.id).unwrap()];
         let o = l.overview(&pack, "t").unwrap();
         assert_eq!((o.clashes, o.missing.clone(), o.updates.len()), (1, vec!["gone".to_string()], 0));
         let jei = o.mods.iter().find(|m| m.hint == "jei").unwrap();
         assert_eq!(jei.entry.as_deref(), Some("k1"));
         assert!(o.mods.iter().find(|m| m.hint == "ghostmod").unwrap().entry.is_none(), "unused config flagged");
-        // The later template wins on export.
+        // The top template wins on export.
         let files = l.export_files(&pack).unwrap();
         let jx = files.iter().find(|f| f.0 == "config/jei/x.toml").unwrap();
         assert_eq!(std::fs::read_to_string(&jx.1).unwrap(), "b");

@@ -54,6 +54,7 @@ export interface Pack {
   entries: Record<string, PackEntry>;
   choices: Record<string, unknown>;
   appliedPayloads: { id: string; version: number }[];
+  /** Attached override templates, highest priority first (top wins clashes). */
   overrideTemplates: string[];
   /** Templates: `files` holds the hashes as of the last review, to list what changed. */
   appliedTemplates: AppliedTemplate[];

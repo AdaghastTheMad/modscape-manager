@@ -431,7 +431,7 @@ pub fn add_overrides(plan: &mut ExportPlan, pack: &Pack, lib: &crate::templates:
                     if o.merged.len() == 1 { "" } else { "s" },
                     o.attached.len(),
                     if o.attached.len() == 1 { "" } else { "s" },
-                    if o.clashes > 0 { format!(" ({} clash{}: the template lower in the list wins)", o.clashes, if o.clashes == 1 { "" } else { "es" }) } else { String::new() }
+                    if o.clashes > 0 { format!(" ({} clash{}: the template higher in the list wins)", o.clashes, if o.clashes == 1 { "" } else { "es" }) } else { String::new() }
                 ),
                 fixes: vec![],
                 fix_label: None,
