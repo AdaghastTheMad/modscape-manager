@@ -1,0 +1,31 @@
+/* Minecraft-dark colour tokens. All originals: no Mojang textures or fonts. */
+:root {
+  --deepslate-dark: #17171c;   /* app background */
+  --deepslate-tile: #1e1e25;
+  --stone-grey: #5f5f66;       /* buttons, bevels */
+  --stone-light: #8e8e96;
+  --stone-shadow: #2a2a30;
+  --inventory-dark: #25252d;   /* panel fill */
+  --inventory-inset: #1a1a20;
+  --slot-fill: #2e2e37;
+  --tooltip-fill: #100010f0;
+  --tooltip-purple: #5000ff;   /* tooltip border, selection */
+  --tooltip-purple-end: #28007f;
+  --emerald: #3fd66b;          /* success */
+  --redstone: #ff5a52;         /* errors, incompatible */
+  --gold: #ffc23d;             /* warnings */
+  --diamond: #4fe3f0;          /* links, focus ring */
+  --badge-modrinth: #4fa3ff;
+  --badge-curseforge: #ff8a3d;
+
+  --text: #ececf1;
+  --text-dim: #a9a9b5;          /* AA on panel fill */
+  --text-faint: #8a8a96;
+
+  --font-pixel: "Pixelify Sans", ui-monospace, monospace;
+  --font-body: system-ui, -apple-system, "Segoe UI", "Noto Sans", "Ubuntu", sans-serif;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-5: 32px;
+  --bevel: 2px;
+  color-scheme: dark;
+}

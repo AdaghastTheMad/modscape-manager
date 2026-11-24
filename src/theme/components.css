@@ -1,0 +1,104 @@
+/* ---------- Button: bevelled stone, dark variant ---------- */
+.mc-btn {
+  font-family: var(--font-pixel); font-weight: 400; font-size: 15px;
+  color: var(--text); text-shadow: 2px 2px 0 #0008;
+  min-height: 32px; padding: 0 var(--space-3);
+  background: var(--stone-grey);
+  border: 2px solid #000;
+  box-shadow: inset var(--bevel) var(--bevel) 0 var(--stone-light), inset calc(-1 * var(--bevel)) calc(-1 * var(--bevel)) 0 var(--stone-shadow);
+  cursor: pointer; user-select: none;
+}
+.mc-btn:hover:not(:disabled) { border-color: #fff; }
+.mc-btn:active:not(:disabled) { box-shadow: inset var(--bevel) var(--bevel) 0 var(--stone-shadow); padding-top: 2px; }
+.mc-btn:disabled { background: #34343a; color: #8a8a90; box-shadow: none; border-color: #111; cursor: default; text-shadow: none; }
+.mc-btn--primary { background: #2f7a45; box-shadow: inset 2px 2px 0 #59b06f, inset -2px -2px 0 #1b4528; }
+.mc-btn--danger { background: #8a2f2a; box-shadow: inset 2px 2px 0 #c0574f, inset -2px -2px 0 #4c1715; }
+.mc-btn--small { min-height: 26px; font-size: 13px; padding: 0 var(--space-2); }
+
+/* ---------- Panel: recessed inventory panel ---------- */
+.mc-panel {
+  background: var(--inventory-dark);
+  border: 2px solid #000;
+  box-shadow: inset var(--bevel) var(--bevel) 0 #3a3a44, inset calc(-1 * var(--bevel)) calc(-1 * var(--bevel)) 0 #111116;
+  padding: var(--space-3);
+}
+.mc-panel--inset {
+  background: var(--inventory-inset);
+  box-shadow: inset var(--bevel) var(--bevel) 0 #0c0c10, inset calc(-1 * var(--bevel)) calc(-1 * var(--bevel)) 0 #34343c;
+}
+.mc-panel__title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
+
+/* ---------- Slot: inventory slot frame ---------- */
+.mc-slot {
+  --size: 48px;
+  width: var(--size); height: var(--size); flex: none;
+  display: grid; place-items: center;
+  background: var(--slot-fill);
+  border: 2px solid;
+  border-color: #0e0e12 #55555f #55555f #0e0e12;
+  position: relative;
+}
+.mc-slot img { width: calc(var(--size) - 12px); height: calc(var(--size) - 12px); image-rendering: pixelated; }
+.mc-slot__glyph { font-family: var(--font-pixel); font-size: calc(var(--size) * 0.38); color: var(--text-dim); }
+/* Highlights are drawn over the slot's own 2 px border (never outside it), so a
+   neighbour can't paint over them, and two highlighted neighbours split the
+   shared edge evenly: 2 px each. z-index keeps them above the hover overlay. */
+.mc-slot:hover::after { content: ""; position: absolute; inset: 0; background: #ffffff1a; }
+.mc-slot--error { outline: 2px solid var(--redstone); outline-offset: -2px; z-index: 1; }
+.mc-slot--selected { outline: 2px solid var(--tooltip-purple); outline-offset: -2px; z-index: 1; }
+
+/* ---------- Tooltip: the game's tooltip box ---------- */
+.mc-tooltip-anchor { position: relative; display: inline-flex; }
+.mc-tooltip {
+  position: absolute; z-index: 50; left: calc(100% + 8px); top: 0;
+  min-width: 220px; max-width: 320px; padding: 6px 8px;
+  background: var(--tooltip-fill);
+  border: 2px solid transparent;
+  border-image: linear-gradient(var(--tooltip-purple), var(--tooltip-purple-end)) 1;
+  box-shadow: 0 0 0 2px #100010f0;
+  pointer-events: none;
+  font-size: 13px; line-height: 1.45;
+}
+.mc-tooltip__name { color: #fff; font-family: var(--font-pixel); font-size: 15px; }
+.mc-tooltip__line { color: var(--text-dim); }
+.mc-tooltip--below { left: 0; top: calc(100% + 8px); }
+
+/* ---------- Badge ---------- */
+.mc-badge { font-family: var(--font-pixel); font-size: 11px; padding: 0 5px; border: 1px solid currentColor; line-height: 16px; display: inline-block; }
+.mc-badge--modrinth { color: var(--badge-modrinth); }
+.mc-badge--curseforge { color: var(--badge-curseforge); }
+
+/* ---------- Input ---------- */
+.mc-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.mc-field__label { font-family: var(--font-pixel); font-size: 13px; color: var(--text-dim); }
+.mc-field__hint { font-size: 12px; color: var(--text-faint); }
+.mc-input, .mc-select {
+  font: inherit; color: var(--text);
+  min-height: 32px; padding: 4px var(--space-2);
+  background: #0b0b0e;
+  border: 2px solid var(--stone-grey);
+  outline: none;
+}
+.mc-input::placeholder { color: var(--text-faint); }
+.mc-input:hover, .mc-select:hover { border-color: var(--stone-light); }
+.mc-input:focus, .mc-select:focus { border-color: var(--diamond); }
+.mc-input:disabled { opacity: 0.6; }
+
+/* ---------- Tabs ---------- */
+.mc-tabs { display: flex; gap: 2px; align-items: flex-end; }
+.mc-tab {
+  font-family: var(--font-pixel); font-size: 14px; color: var(--text-dim);
+  padding: 6px var(--space-3); min-height: 32px;
+  background: #1c1c22; border: 2px solid #000; border-bottom: none;
+  box-shadow: inset 2px 2px 0 #2e2e36;
+  cursor: pointer;
+}
+.mc-tab:hover { color: var(--text); }
+.mc-tab[aria-selected="true"] { background: var(--inventory-dark); color: #fff; box-shadow: inset 2px 2px 0 #3a3a44; padding-bottom: 8px; }
+.mc-tabs--under { border-bottom: 2px solid #000; }
+
+/* ---------- Notice ---------- */
+.mc-notice { border-left: 4px solid var(--gold); background: #2a2410; padding: var(--space-2) var(--space-3); }
+.mc-notice--error { border-color: var(--redstone); background: #2a1414; }
+.mc-notice--ok { border-color: var(--emerald); background: #11261a; }
+.mc-notice pre { white-space: pre-wrap; font-family: var(--font-body); margin: var(--space-2) 0 0; color: var(--text); }

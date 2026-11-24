@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "id": 238222,
+      "gameId": 432,
+      "name": "Just Enough Items (JEI)",
+      "slug": "jei",
+      "summary": "View Items and Recipes",
+      "downloadCount": 400000000.0,
+      "logo": { "id": 1, "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/29/69/64/64/635838945588716414.jpeg" },
+      "dateModified": "2026-11-01T12:00:00Z",
+      "categories": [{ "id": 421, "name": "API and Library" }],
+      "authors": [{ "id": 17072, "name": "mezz" }],
+      "allowModDistribution": true
+    },
+    { "id": 1, "name": "Sparse Mod", "logo": null }
+  ],
+  "pagination": { "index": 0, "pageSize": 20, "resultCount": 2, "totalCount": 2 }
+}

@@ -1,0 +1,13 @@
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+.app-header { display: flex; align-items: flex-end; gap: var(--space-4); padding: var(--space-3) var(--space-3) 0; background: #101014e6; border-bottom: 2px solid #000; }
+.app-header h1 { padding-bottom: var(--space-2); }
+.app-main { overflow: auto; padding: var(--space-3); }
+.workspace { display: grid; grid-template-columns: 320px 1fr 340px; gap: var(--space-3); height: 100%; min-height: 480px; }
+.empty-state { height: 100%; display: grid; place-items: center; text-align: center; color: var(--text-dim); }
+.empty-state .pixel { color: var(--text); font-size: 16px; margin-bottom: var(--space-2); }
+.settings { max-width: 880px; margin: 0 auto; }
+.result-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.result { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-2); background: #1d1d24; border: 1px solid #000; }
+.result__name { font-weight: 600; }
+.kit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: var(--space-3); }
+.slot-row { display: flex; gap: 0; }
