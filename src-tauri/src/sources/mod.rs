@@ -82,12 +82,19 @@ pub struct SearchQuery {
     /// Bypass the cache (manual refresh).
     #[serde(default)]
     pub force: bool,
+    /// Mods (default), resource packs, shaders or datapacks.
+    #[serde(default)]
+    pub kind: crate::model::EntryKind,
 }
 fn default_limit() -> u32 {
     20
 }
 
 impl SearchQuery {
+    /// The loader filter, which only applies to mods.
+    pub fn mod_loader(&self) -> Option<Loader> {
+        if self.kind == crate::model::EntryKind::Mod { self.loader } else { None }
+    }
     pub fn clamped_limit(&self) -> u32 {
         self.limit.clamp(1, 50)
     }

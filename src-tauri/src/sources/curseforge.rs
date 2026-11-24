@@ -18,6 +18,22 @@ const BASE: &str = "https://api.curseforge.com";
 const NAME: &str = "CurseForge";
 pub const MINECRAFT_GAME_ID: u32 = 432;
 pub const CLASS_MODS: u32 = 6;
+/// CurseForge class ids for the other content types (Minecraft game 432).
+/// Not checked against the live API from here (it needs the owner's key):
+/// confirm by searching each content type with CurseForge on.
+pub const CLASS_RESOURCE_PACKS: u32 = 12;
+pub const CLASS_SHADERS: u32 = 6552;
+pub const CLASS_DATAPACKS: u32 = 6945;
+
+pub fn class_for(kind: crate::model::EntryKind) -> u32 {
+    use crate::model::EntryKind::*;
+    match kind {
+        Mod => CLASS_MODS,
+        Resourcepack => CLASS_RESOURCE_PACKS,
+        Shader => CLASS_SHADERS,
+        Datapack => CLASS_DATAPACKS,
+    }
+}
 pub const PREFIX: &str = "cf:";
 
 pub fn loader_type(l: Loader) -> u32 {
@@ -148,6 +164,7 @@ pub struct Mod {
     categories: Vec<Named>,
     authors: Vec<Named>,
     latest_files_indexes: Vec<FileIndex>,
+    class_id: Option<u32>,
     allow_mod_distribution: Option<bool>,
     thumbs_up_count: u64,
 }
@@ -332,6 +349,13 @@ impl Mod {
             updated: self.date_modified,
             downloads: self.download_count.max(0.0) as u64,
             license: None,
+            kind: match self.class_id {
+                Some(CLASS_RESOURCE_PACKS) => Some(crate::model::EntryKind::Resourcepack),
+                Some(CLASS_SHADERS) => Some(crate::model::EntryKind::Shader),
+                Some(CLASS_DATAPACKS) => Some(crate::model::EntryKind::Datapack),
+                Some(_) => Some(crate::model::EntryKind::Mod),
+                None => None,
+            },
         }
     }
 }
@@ -408,11 +432,11 @@ impl CurseForge {
             .body(body.to_string()))
     }
 
-    async fn category_ids(&self, slugs: &[String], force: bool) -> AppResult<(Vec<u64>, Vec<String>)> {
+    async fn category_ids(&self, slugs: &[String], class: u32, force: bool) -> AppResult<(Vec<u64>, Vec<String>)> {
         if slugs.is_empty() {
             return Ok((vec![], vec![]));
         }
-        let req = self.get(&format!("/v1/categories?gameId={MINECRAFT_GAME_ID}&classId={CLASS_MODS}")).await?;
+        let req = self.get(&format!("/v1/categories?gameId={MINECRAFT_GAME_ID}&classId={class}")).await?;
         let (env, _) = self.fetcher.fetch_json::<Envelope<Vec<CategoryWire>>>(req, 7 * DAY, force, NAME, status_help(NAME)).await?;
         let mut ids = Vec::new();
         let mut unmapped = Vec::new();
@@ -429,7 +453,8 @@ impl CurseForge {
     /// Search, plus notes when a filter can't be expressed on CurseForge.
     pub async fn search_with_notes(&self, q: &SearchQuery) -> AppResult<(SearchPage, Vec<String>)> {
         let mut notes = Vec::new();
-        let (cat_ids, unmapped) = self.category_ids(&q.categories, q.force).await?;
+        let class = class_for(q.kind);
+        let (cat_ids, unmapped) = self.category_ids(&q.categories, class, q.force).await?;
         if !unmapped.is_empty() {
             notes.push("CurseForge has no matching category, so it's left out of this filtered search.".into());
             return Ok((SearchPage { source: Source::Curseforge, total: 0, hits: vec![], freshness: None }, notes));
@@ -439,7 +464,7 @@ impl CurseForge {
         }
         let mut params: Vec<(&str, String)> = vec![
             ("gameId", MINECRAFT_GAME_ID.to_string()),
-            ("classId", CLASS_MODS.to_string()),
+            ("classId", class.to_string()),
             ("searchFilter", q.text.trim().to_string()),
             ("sortField", sort_field(q.sort).to_string()),
             ("sortOrder", "desc".into()),
@@ -450,7 +475,7 @@ impl CurseForge {
             if let Some(v) = &q.game_version {
                 params.push(("gameVersion", v.clone()));
             }
-            if let Some(l) = q.loader {
+            if let Some(l) = q.mod_loader() {
                 // Quilt also runs Fabric mods; CurseForge filters one loader at a time, so ask for both.
                 if l == Loader::Quilt {
                     params.push(("modLoaderTypes", "[4,5]".into()));
@@ -465,7 +490,7 @@ impl CurseForge {
         let req = self.get("/v1/mods/search").await?.query(&params);
         let (env, fr) = self.fetcher.fetch_json::<Envelope<Vec<Mod>>>(req, DAY, q.force, NAME, status_help(NAME)).await?;
         let total = env.pagination.map(|p| p.total_count).unwrap_or(env.data.len() as u64);
-        let hits = env.data.into_iter().map(|m| m.into_hit(q.game_version.as_deref(), q.loader)).collect();
+        let hits = env.data.into_iter().map(|m| m.into_hit(q.game_version.as_deref(), q.mod_loader())).collect();
         Ok((SearchPage { source: Source::Curseforge, total, hits, freshness: Some(fr) }, notes))
     }
 
@@ -622,6 +647,35 @@ impl Catalog for CurseForge {
             }
         }
         Ok(out)
+    }
+
+    /// Resource packs, shaders and datapacks have no loader on CurseForge; their
+    /// files get the kind's Modrinth-style tag so selection treats both sites alike.
+    async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: crate::model::EntryKind, force: bool) -> AppResult<Vec<Version>> {
+        if kind == crate::model::EntryKind::Mod {
+            return self.versions(project_id, mc, loader, force).await;
+        }
+        let Some(id) = parse_id(project_id) else { return Ok(vec![]) };
+        let mut q = vec![("pageSize", "50".to_string())];
+        if !crate::resolve::kind_may_fall_back(kind) {
+            q.push(("gameVersion", mc.to_string()));
+        }
+        let req = self.get(&format!("/v1/mods/{id}/files")).await?.query(&q);
+        let files = match self.fetcher.fetch_json::<Envelope<Vec<File>>>(req, DAY, force, NAME, status_help(NAME)).await {
+            Ok((env, _)) => env.data,
+            Err(AppError::Api { status: 404, .. }) => vec![],
+            Err(e) => return Err(e),
+        };
+        let tags = crate::resolve::kind_loaders(kind, loader);
+        Ok(files
+            .into_iter()
+            .filter(|f| f.is_available && !f.is_server_pack)
+            .map(|f| {
+                let mut v = f.into_version();
+                v.loaders = tags.iter().map(|s| s.to_string()).collect();
+                v
+            })
+            .collect())
     }
 
     async fn version(&self, id: &str, force: bool) -> AppResult<Option<Version>> {

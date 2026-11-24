@@ -163,6 +163,9 @@ pub struct ProjectInfo {
     pub updated: Option<String>,
     pub downloads: u64,
     pub license: Option<LicenseRef>,
+    /// CurseForge only: what its class says this project is.
+    #[serde(skip)]
+    pub kind: Option<EntryKind>,
 }
 
 impl ProjectInfo {
@@ -195,6 +198,70 @@ impl ProjectInfo {
 /// `Stable`: newest release, else newest beta, else alpha.
 /// `Newest`: newest build of any channel.
 /// Either way, for Quilt packs a native Quilt build beats a Fabric one of the same rank.
+// ---------------------------------------------------------------- content kinds (M11)
+/// Modrinth "loader" tags a build of this kind carries: mods use the pack's
+/// loader; resource packs are tagged `minecraft`, shaders `iris`/`optifine`
+/// (Iris and Oculus read both), datapacks `datapack`.
+pub fn kind_loaders(kind: EntryKind, loader: Loader) -> &'static [&'static str] {
+    match kind {
+        EntryKind::Mod => loader.accepts(),
+        EntryKind::Resourcepack => &["minecraft"],
+        EntryKind::Shader => &["iris", "optifine"],
+        EntryKind::Datapack => &["datapack"],
+    }
+}
+/// Resource packs and shaders usually work on other versions, so they may
+/// fall back to a build made for another Minecraft version (with a warning).
+pub fn kind_may_fall_back(kind: EntryKind) -> bool {
+    matches!(kind, EntryKind::Resourcepack | EntryKind::Shader)
+}
+pub fn kind_label(kind: EntryKind) -> &'static str {
+    match kind {
+        EntryKind::Mod => "mod",
+        EntryKind::Resourcepack => "resource pack",
+        EntryKind::Shader => "shader",
+        EntryKind::Datapack => "datapack",
+    }
+}
+/// Paxi (Modrinth): loads datapacks in every world. Added with the first datapack.
+pub const PAXI: &str = "CU0PAyzb";
+/// Iris (Fabric, NeoForge) and Oculus (Forge) run shader packs.
+pub const IRIS: &str = "YL57xq9U";
+pub const OCULUS: &str = "GchcoXML";
+
+impl Version {
+    pub fn fits_kind(&self, loader: Loader, kind: EntryKind) -> bool {
+        kind_loaders(kind, loader).iter().any(|l| self.loaders.iter().any(|x| x == l))
+    }
+    pub fn supports_kind(&self, mc: &str, loader: Loader, kind: EntryKind) -> bool {
+        self.fits_kind(loader, kind) && self.game_versions.iter().any(|v| v == mc)
+    }
+}
+
+/// Like `select_version`, for any kind. The bool is false when the build is a
+/// fallback made for another Minecraft version (resource packs, shaders).
+pub fn select_version_kind(versions: &[Version], mc: &str, loader: Loader, kind: EntryKind, policy: ChannelPolicy) -> Option<(Version, bool)> {
+    if kind == EntryKind::Mod {
+        return select_version(versions, mc, loader, policy).map(|v| (v, true));
+    }
+    let rank = |t: &str| match (policy, t) {
+        (ChannelPolicy::Newest, _) => 0,
+        (_, "release") => 0,
+        (_, "beta") => 1,
+        (_, "alpha") => 2,
+        _ => 3,
+    };
+    let best = |it: &mut dyn Iterator<Item = &Version>| it.min_by(|a, b| rank(&a.version_type).cmp(&rank(&b.version_type)).then(b.date_published.cmp(&a.date_published))).cloned();
+    if let Some(v) = best(&mut versions.iter().filter(|v| v.supports_kind(mc, loader, kind))) {
+        return Some((v, true));
+    }
+    if kind_may_fall_back(kind) {
+        // Newest build of any version, by date (not rank: a recent beta beats an ancient release here).
+        return versions.iter().filter(|v| v.fits_kind(loader, kind)).max_by(|a, b| a.date_published.cmp(&b.date_published)).cloned().map(|v| (v, false));
+    }
+    None
+}
+
 pub fn select_version(versions: &[Version], mc: &str, loader: Loader, policy: ChannelPolicy) -> Option<Version> {
     let rank = |t: &str| match (policy, t) {
         (ChannelPolicy::Newest, _) => 0,
@@ -224,6 +291,11 @@ pub trait Catalog: Send + Sync {
     async fn version(&self, id: &str, force: bool) -> AppResult<Option<Version>>;
     /// Project info for many ids; unknown ids are simply absent.
     async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<ProjectInfo>>;
+    /// Builds of a project as `kind`. Resource packs and shaders return every
+    /// Minecraft version (for fallbacks); callers filter with `select_version_kind`.
+    async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: EntryKind, force: bool) -> AppResult<Vec<Version>> {
+        if kind == EntryKind::Mod { self.versions(project_id, mc, loader, force).await } else { Ok(vec![]) }
+    }
 }
 
 /// Routes `cf:` ids to CurseForge and everything else to Modrinth.
@@ -245,6 +317,9 @@ impl Catalog for Multi<'_> {
     }
     async fn version(&self, id: &str, force: bool) -> AppResult<Option<Version>> {
         self.pick(id).version(id, force).await
+    }
+    async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: EntryKind, force: bool) -> AppResult<Vec<Version>> {
+        self.pick(project_id).versions_of(project_id, mc, loader, kind, force).await
     }
     async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<ProjectInfo>> {
         let (cf, mr): (Vec<String>, Vec<String>) = ids.iter().cloned().partition(|i| i.starts_with(curseforge::PREFIX));
@@ -414,24 +489,29 @@ fn iso_age_secs(iso: &str, now: i64) -> Option<i64> {
 
 struct Selected {
     version: Option<Version>,
+    /// False: a fallback build made for another Minecraft version.
+    exact: bool,
     pinned: bool,
     /// Pinned file missing or not for this version/loader.
     pin_problem: Option<&'static str>,
 }
 
-async fn select_for(cat: &dyn Catalog, project_id: &str, pin: Option<&str>, mc: &str, loader: Loader, policy: ChannelPolicy, force: bool) -> AppResult<Selected> {
+#[allow(clippy::too_many_arguments)]
+async fn select_for(cat: &dyn Catalog, project_id: &str, pin: Option<&str>, mc: &str, loader: Loader, kind: EntryKind, policy: ChannelPolicy, force: bool) -> AppResult<Selected> {
     if let Some(vid) = pin {
         return Ok(match cat.version(vid, force).await? {
-            None => Selected { version: None, pinned: true, pin_problem: Some("missing") },
-            Some(v) if v.project_id != project_id => Selected { version: None, pinned: true, pin_problem: Some("missing") },
+            None => Selected { version: None, exact: true, pinned: true, pin_problem: Some("missing") },
+            Some(v) if v.project_id != project_id => Selected { version: None, exact: true, pinned: true, pin_problem: Some("missing") },
             Some(v) => {
-                let ok = v.supports(mc, loader);
-                Selected { version: Some(v), pinned: true, pin_problem: (!ok).then_some("mismatch") }
+                let exact = v.supports_kind(mc, loader, kind);
+                let ok = exact || (kind_may_fall_back(kind) && v.fits_kind(loader, kind));
+                Selected { version: Some(v), exact, pinned: true, pin_problem: (!ok).then_some("mismatch") }
             }
         });
     }
-    let versions = cat.versions(project_id, mc, loader, force).await?;
-    Ok(Selected { version: select_version(&versions, mc, loader, policy), pinned: false, pin_problem: None })
+    let versions = cat.versions_of(project_id, mc, loader, kind, force).await?;
+    let picked = select_version_kind(&versions, mc, loader, kind, policy);
+    Ok(Selected { exact: picked.as_ref().is_none_or(|p| p.1), version: picked.map(|p| p.0), pinned: false, pin_problem: None })
 }
 
 /// Fills in `project_id` for dependencies that only name a version.
@@ -445,6 +525,53 @@ async fn resolve_dep_projects(cat: &dyn Catalog, deps: &mut [Dep], force: bool, 
                 }
                 d.project_id = cache.get(&vid).and_then(|v| v.as_ref()).map(|v| v.project_id.clone());
             }
+        }
+    }
+}
+
+fn capitalise(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+/// Is a project (by Modrinth id or by name) in the pack?
+pub(crate) fn has_project(pack: &Pack, modrinth_id: &str, names: &[&str]) -> bool {
+    pack.entries.values().any(|e| {
+        e.mod_ref.modrinth_id.as_deref() == Some(modrinth_id) || names.iter().any(|n| e.display.name.eq_ignore_ascii_case(n) || e.display.slug.eq_ignore_ascii_case(n))
+    })
+}
+
+/// Pack-level checks for non-mod content: shaders need Iris/Oculus;
+/// datapacks load in every world only with Paxi.
+fn kind_checks(pack: &Pack, issues: &mut Vec<Issue>) {
+    let first = |k: EntryKind| pack.entries.iter().find(|(_, e)| e.kind == k).map(|(key, e)| (key.clone(), e.display.name.clone()));
+    if let Some((key, name)) = first(EntryKind::Shader) {
+        if !has_project(pack, IRIS, &["iris", "Iris Shaders"]) && !has_project(pack, OCULUS, &["oculus"]) {
+            let (pid, mod_name) = if pack.loader == Loader::Forge { (OCULUS, "Oculus") } else { (IRIS, "Iris") };
+            issues.push(Issue {
+                id: "shader_loader_missing".into(),
+                severity: Severity::Error,
+                kind: "shader_loader_missing",
+                entry_key: Some(key),
+                other_key: None,
+                message: format!("Shader packs like {name} need {mod_name} to run."),
+                fix: Some(Fix::AddProject { project_id: pid.into(), name: mod_name.into(), pin_version: None, for_key: None }),
+            });
+        }
+    }
+    if let Some((key, name)) = first(EntryKind::Datapack) {
+        if !has_project(pack, PAXI, &["paxi"]) {
+            issues.push(Issue {
+                id: "datapack_without_paxi".into(),
+                severity: Severity::Warning,
+                kind: "datapack_without_paxi",
+                entry_key: Some(key),
+                other_key: None,
+                message: format!(
+                    "Without Paxi, datapacks like {name} are exported to a datapacks/ folder and have to be added to each world by hand. Paxi loads them in every world."
+                ),
+                fix: Some(Fix::AddProject { project_id: PAXI.into(), name: "Paxi".into(), pin_version: None, for_key: None }),
+            });
         }
     }
 }
@@ -466,7 +593,8 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
     }
     let selected: Vec<(String, String, AppResult<Selected>)> = stream::iter(targets)
         .map(|(k, pid, pin)| async move {
-            let r = select_for(cat, &pid, pin.as_deref(), mc, loader, pack.channel_policy, force).await;
+            let kind = pack.entries[&k].kind;
+            let r = select_for(cat, &pid, pin.as_deref(), mc, loader, kind, pack.channel_policy, force).await;
             (k, pid, r)
         })
         .buffer_unordered(PARALLEL)
@@ -527,12 +655,32 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
                         kind: "no_build",
                         entry_key: Some(key.clone()),
                         other_key: None,
-                        message: format!("{name} has no build for Minecraft {mc} · {}.", loader_name(loader)),
+                        message: if e.kind == EntryKind::Mod {
+                            format!("{name} has no build for Minecraft {mc} · {}.", loader_name(loader))
+                        } else {
+                            format!("{name} has no {} build for Minecraft {mc}.", kind_label(e.kind))
+                        },
                         fix: Some(Fix::Remove { key: key.clone() }),
                     }),
                     None => {}
                     Some(mut v) => {
                         rep.file = Some(v.file_info(sel.pinned));
+                        if !sel.exact {
+                            issues.push(Issue {
+                                id: format!("version_fallback:{key}"),
+                                severity: Severity::Warning,
+                                kind: "version_fallback",
+                                entry_key: Some(key.clone()),
+                                other_key: None,
+                                message: format!(
+                                    "{name} has no build marked for Minecraft {mc}, so it uses {} (made for {}). {}s usually still work; Minecraft may list it as made for another version.",
+                                    v.version_number,
+                                    v.game_versions.last().map(String::as_str).unwrap_or("another version"),
+                                    capitalise(kind_label(e.kind))
+                                ),
+                                fix: None,
+                            });
+                        }
                         if v.distribution_blocked {
                             let other = e.mod_ref.modrinth_id.is_some();
                             issues.push(Issue {
@@ -549,7 +697,7 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
                             });
                         }
                         resolve_dep_projects(cat, &mut v.dependencies, force, &mut vcache).await;
-                        if !sel.pinned {
+                        if !sel.pinned && e.kind == EntryKind::Mod {
                             if let Some(age) = iso_age_secs(&v.date_published, now) {
                                 if age > STALE_SECS {
                                     issues.push(Issue {
@@ -829,14 +977,21 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
         entries.get_mut(key).unwrap().required_by = rb;
     }
 
+    kind_checks(pack, &mut issues);
     issues.sort_by(|a, b| a.severity.cmp(&b.severity).then(a.message.cmp(&b.message)));
     Analysis { entries, issues, suggestions: suggestions.into_values().collect(), complete }
 }
 
 /// Every file usable with (mc, loader), newest first — for the pin picker.
 pub fn compatible_files(versions: &[Version], mc: &str, loader: Loader) -> Vec<FileInfo> {
-    let mut v: Vec<&Version> = versions.iter().filter(|v| v.supports(mc, loader)).collect();
-    v.sort_by(|a, b| b.date_published.cmp(&a.date_published));
+    compatible_files_kind(versions, mc, loader, EntryKind::Mod)
+}
+
+/// Files you can pin, newest first. For resource packs and shaders, builds
+/// marked for this Minecraft version come first, then the others.
+pub fn compatible_files_kind(versions: &[Version], mc: &str, loader: Loader, kind: EntryKind) -> Vec<FileInfo> {
+    let mut v: Vec<&Version> = versions.iter().filter(|v| v.supports_kind(mc, loader, kind) || (kind_may_fall_back(kind) && v.fits_kind(loader, kind))).collect();
+    v.sort_by(|a, b| b.supports_kind(mc, loader, kind).cmp(&a.supports_kind(mc, loader, kind)).then(b.date_published.cmp(&a.date_published)));
     v.into_iter().map(|v| v.file_info(false)).collect()
 }
 
@@ -919,15 +1074,36 @@ struct Node {
     parents: Vec<String>,
     file_id: Option<String>,
     is_root: bool,
+    kind: EntryKind,
 }
 
 /// Works out everything that adding `project_id` brings with it: the mod,
 /// its required dependencies (transitively, cycle-safe), links to mods
 /// already in the pack, and optional suggestions. Nothing is changed here;
 /// the UI applies the plan.
+#[allow(clippy::too_many_arguments)]
 pub async fn plan_add(
     pack: &Pack,
     project_id: &str,
+    pin_version: Option<&str>,
+    for_parent: Option<&str>,
+    alt_id: Option<&str>,
+    cat: &dyn Catalog,
+    force: bool,
+    now_iso: &str,
+    new_key: impl FnMut() -> String,
+) -> AppResult<AddPlan> {
+    plan_add_kind(pack, project_id, EntryKind::Mod, pin_version, for_parent, alt_id, cat, force, now_iso, new_key).await
+}
+
+/// `plan_add` for any content kind. The root is added as `kind`; its
+/// dependencies are always mods. A datapack brings Paxi along (if the pack
+/// doesn't have it) so it loads in every world.
+#[allow(clippy::too_many_arguments)]
+pub async fn plan_add_kind(
+    pack: &Pack,
+    project_id: &str,
+    kind: EntryKind,
     pin_version: Option<&str>,
     for_parent: Option<&str>,
     alt_id: Option<&str>,
@@ -1002,22 +1178,35 @@ pub async fn plan_add(
         }
         let key = new_key();
         planned.insert(pid.clone(), nodes.len());
-        nodes.push(Node { key: key.clone(), project_id: pid.clone(), parents: parent.into_iter().collect(), file_id: None, is_root: nodes.is_empty() });
+        let is_root = nodes.is_empty();
+        let node_kind = if is_root { kind } else { EntryKind::Mod };
+        nodes.push(Node { key: key.clone(), project_id: pid.clone(), parents: parent.into_iter().collect(), file_id: None, is_root, kind: node_kind });
         let idx = nodes.len() - 1;
+        if is_root && kind == EntryKind::Datapack && !has_project(pack, PAXI, &["paxi"]) {
+            queue.push_back((PAXI.to_string(), Some(key.clone()), None));
+        }
 
         // Honour a dependency's exact-version pin only when that version fits the pack.
         let mut version = None;
         if let Some(vid) = &pin {
             if let Some(v) = cat.version(vid, force).await? {
-                if v.project_id == pid && v.supports(mc, loader) {
+                if v.project_id == pid && (v.supports_kind(mc, loader, node_kind) || (kind_may_fall_back(node_kind) && v.fits_kind(loader, node_kind))) {
                     nodes[idx].file_id = Some(v.id.clone());
                     version = Some(v);
                 }
             }
         }
         if version.is_none() {
-            let vs = cat.versions(&pid, mc, loader, force).await?;
-            version = select_version(&vs, mc, loader, pack.channel_policy);
+            let vs = cat.versions_of(&pid, mc, loader, node_kind, force).await?;
+            match select_version_kind(&vs, mc, loader, node_kind, pack.channel_policy) {
+                Some((v, exact)) => {
+                    if !exact {
+                        notes.push(format!("No build is marked for Minecraft {mc}; using {} (made for {}).", v.version_number, v.game_versions.last().map(String::as_str).unwrap_or("another version")));
+                    }
+                    version = Some(v);
+                }
+                None => version = None,
+            }
         }
         let Some(mut v) = version else {
             no_build.push(pid.clone());
@@ -1057,7 +1246,11 @@ pub async fn plan_add(
 
     for pid in &no_build {
         let name = infos.get(pid).map(|p| p.display().name).unwrap_or_else(|| pid.clone());
-        notes.push(format!("{name} has no build for Minecraft {mc} · {}.", loader_name(loader)));
+        if pid == project_id && kind != EntryKind::Mod {
+            notes.push(format!("{name} has no {} build for Minecraft {mc}.", kind_label(kind)));
+        } else {
+            notes.push(format!("{name} has no build for Minecraft {mc} · {}.", loader_name(loader)));
+        }
     }
 
     // Dependencies that don't exist on Modrinth any more are reported, not added.
@@ -1074,7 +1267,7 @@ pub async fn plan_add(
                 mod_ref: mod_ref_for(&n.project_id, if n.is_root { alt_id } else { None }),
                 // Pins are stored without the `cf:` prefix.
                 file_id: n.file_id.as_ref().map(|f| f.strip_prefix(curseforge::PREFIX).unwrap_or(f).to_string()),
-                kind: EntryKind::Mod,
+                kind: n.kind,
                 reason: if n.is_root && for_parent.is_none() { Reason::User } else { Reason::Dependency },
                 pulled_in_by: n.parents.iter().filter(|p| !ghosts.contains(*p)).cloned().collect(),
                 payload_ids: vec![],
@@ -1276,6 +1469,111 @@ pub(crate) mod tests {
 
     pub(crate) fn block<T>(f: impl std::future::Future<Output = T>) -> T {
         tauri::async_runtime::block_on(f)
+    }
+
+    // ------------------------------------------------ content kinds (M11)
+    /// Small synthetic catalog with a resource pack, a shader, a datapack, Paxi and Iris.
+    pub(crate) struct KindCat {
+        versions: Vec<Version>,
+        projects: HashMap<String, ProjectInfo>,
+    }
+    fn ver(id: &str, pid: &str, games: &[&str], loaders: &[&str], date: &str, deps: &[&str]) -> Version {
+        Version {
+            id: id.into(),
+            project_id: pid.into(),
+            version_number: id.into(),
+            version_type: "release".into(),
+            date_published: date.into(),
+            game_versions: games.iter().map(|s| s.to_string()).collect(),
+            loaders: loaders.iter().map(|s| s.to_string()).collect(),
+            dependencies: deps.iter().map(|d| Dep { project_id: Some(d.to_string()), version_id: None, file_name: None, dependency_type: DepType::Required }).collect(),
+            files: vec![VFile { filename: format!("{id}.zip"), url: format!("https://cdn.modrinth.com/data/{pid}/{id}.zip"), size: 1, hashes: HashMap::from([("sha1".into(), "a".into()), ("sha512".into(), "b".into())]), primary: true }],
+            distribution_blocked: false,
+        }
+    }
+    impl KindCat {
+        pub(crate) fn new() -> Self {
+            let versions = vec![
+                ver("rpOld", "rpFresh", &["1.20.1"], &["minecraft"], "2024-01-01", &[]),
+                ver("rpNew", "rpFresh", &["1.20.4"], &["minecraft"], "2024-06-01", &[]),
+                ver("shExact", "shComp", &["1.21.1"], &["iris", "optifine"], "2025-01-01", &[]),
+                ver("dpJar", "dpTerra", &["1.21.1"], &["fabric"], "2025-02-01", &[]),
+                ver("dpZip", "dpTerra", &["1.21.1"], &["datapack"], "2025-02-01", &[]),
+                ver("paxiF", PAXI, &["1.21.1"], &["fabric"], "2025-03-01", &["yung"]),
+                ver("yungF", "yung", &["1.21.1"], &["fabric"], "2025-03-01", &[]),
+                ver("irisF", IRIS, &["1.21.1"], &["fabric"], "2025-03-01", &[]),
+            ];
+            let mut projects = HashMap::new();
+            for (id, name) in [("rpFresh", "Fresh Animations"), ("shComp", "Complementary"), ("dpTerra", "Terralith"), (PAXI, "Paxi"), ("yung", "YUNG's API"), (IRIS, "Iris")] {
+                projects.insert(id.to_string(), ProjectInfo { id: id.into(), slug: name.to_lowercase(), title: name.into(), ..Default::default() });
+            }
+            KindCat { versions, projects }
+        }
+    }
+    #[async_trait::async_trait]
+    impl Catalog for KindCat {
+        async fn versions(&self, p: &str, mc: &str, l: Loader, _f: bool) -> AppResult<Vec<Version>> {
+            Ok(self.versions.iter().filter(|v| v.project_id == p && v.supports(mc, l)).cloned().collect())
+        }
+        async fn versions_of(&self, p: &str, mc: &str, l: Loader, kind: EntryKind, f: bool) -> AppResult<Vec<Version>> {
+            if kind == EntryKind::Mod {
+                return self.versions(p, mc, l, f).await;
+            }
+            Ok(self.versions.iter().filter(|v| v.project_id == p && v.fits_kind(l, kind)).cloned().collect())
+        }
+        async fn version(&self, id: &str, _f: bool) -> AppResult<Option<Version>> {
+            Ok(self.versions.iter().find(|v| v.id == id).cloned())
+        }
+        async fn projects(&self, ids: &[String], _f: bool) -> AppResult<Vec<ProjectInfo>> {
+            Ok(ids.iter().filter_map(|i| self.projects.get(i).cloned()).collect())
+        }
+    }
+
+    #[test]
+    fn kinds_pick_their_own_builds_and_fall_back_only_where_safe() {
+        let c = KindCat::new();
+        let rp: Vec<Version> = c.versions.iter().filter(|v| v.project_id == "rpFresh").cloned().collect();
+        let (v, exact) = select_version_kind(&rp, "1.21.1", Loader::Fabric, EntryKind::Resourcepack, ChannelPolicy::Stable).unwrap();
+        assert_eq!((v.id.as_str(), exact), ("rpNew", false), "newest other-version build, flagged");
+        let dp: Vec<Version> = c.versions.iter().filter(|v| v.project_id == "dpTerra").cloned().collect();
+        assert_eq!(select_version_kind(&dp, "1.21.1", Loader::Fabric, EntryKind::Datapack, ChannelPolicy::Stable).unwrap().0.id, "dpZip");
+        assert_eq!(select_version_kind(&dp, "1.21.1", Loader::Fabric, EntryKind::Mod, ChannelPolicy::Stable).unwrap().0.id, "dpJar", "same project as a mod");
+        assert!(select_version_kind(&dp, "1.20.1", Loader::Fabric, EntryKind::Datapack, ChannelPolicy::Stable).is_none(), "datapacks never fall back");
+    }
+
+    #[test]
+    fn adding_a_datapack_brings_paxi_and_its_deps() {
+        let c = KindCat::new();
+        let pack = pack_for("1.21.1", Loader::Fabric);
+        let plan = block(plan_add_kind(&pack, "dpTerra", EntryKind::Datapack, None, None, None, &c, false, "t", counter())).unwrap();
+        let got: Vec<(String, EntryKind, Reason)> = plan.additions.iter().map(|a| (a.entry.display.name.clone(), a.entry.kind, a.entry.reason)).collect();
+        assert_eq!(got, vec![
+            ("Terralith".to_string(), EntryKind::Datapack, Reason::User),
+            ("Paxi".to_string(), EntryKind::Mod, Reason::Dependency),
+            ("YUNG's API".to_string(), EntryKind::Mod, Reason::Dependency),
+        ]);
+    }
+
+    #[test]
+    fn kind_checks_shader_needs_iris_and_fallback_warns() {
+        let c = KindCat::new();
+        let mut pack = pack_for("1.21.1", Loader::Fabric);
+        let mut keys = counter();
+        for (pid, kind) in [("shComp", EntryKind::Shader), ("rpFresh", EntryKind::Resourcepack)] {
+            let plan = block(plan_add_kind(&pack, pid, kind, None, None, None, &c, false, "t", &mut keys)).unwrap();
+            apply(&mut pack, plan);
+        }
+        let a = block(analyze(&pack, &c, false, 0));
+        let k = kinds(&a);
+        assert!(k.contains(&"shader_loader_missing"), "{k:?}");
+        assert!(k.contains(&"version_fallback"), "{k:?}");
+        assert!(!k.contains(&"no_build"), "{k:?}");
+        let fix = a.issues.iter().find(|i| i.kind == "shader_loader_missing").unwrap().fix.clone();
+        assert!(matches!(fix, Some(Fix::AddProject { ref project_id, .. }) if project_id == IRIS));
+        // With Iris added the shader check is satisfied.
+        let plan = block(plan_add(&pack, IRIS, None, None, None, &c, false, "t", &mut keys)).unwrap();
+        apply(&mut pack, plan);
+        assert!(!kinds(&block(analyze(&pack, &c, false, 0))).contains(&"shader_loader_missing"));
     }
 
     // ---------------------------------------------------------- selection

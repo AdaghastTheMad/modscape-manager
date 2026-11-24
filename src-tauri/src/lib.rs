@@ -50,6 +50,9 @@ impl resolve::Catalog for Live<'_> {
     async fn version(&self, id: &str, force: bool) -> AppResult<Option<resolve::Version>> {
         self.0.version(id, force).await
     }
+    async fn versions_of(&self, p: &str, mc: &str, l: Loader, kind: model::EntryKind, force: bool) -> AppResult<Vec<resolve::Version>> {
+        self.0.versions_of(p, mc, l, kind, force).await
+    }
     async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<resolve::ProjectInfo>> {
         self.0.projects(ids, force).await
     }
@@ -169,8 +172,8 @@ async fn project_details(state: St<'_>, source: Source, id: String, force: Optio
 }
 
 #[tauri::command]
-async fn categories(state: St<'_>, force: Option<bool>) -> AppResult<Vec<modrinth::Category>> {
-    state.modrinth.categories(force.unwrap_or(false)).await
+async fn categories(state: St<'_>, force: Option<bool>, kind: Option<model::EntryKind>) -> AppResult<Vec<modrinth::Category>> {
+    state.modrinth.categories_for(kind.unwrap_or_default(), force.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -322,8 +325,10 @@ async fn plan_add(
     for_key: Option<String>,
     alt_id: Option<String>,
     added_at: String,
+    kind: Option<model::EntryKind>,
 ) -> AppResult<resolve::AddPlan> {
-    resolve::plan_add(&pack, &project_id, pin_version.as_deref(), for_key.as_deref(), alt_id.as_deref(), &state.catalog(), false, &added_at, || uuid::Uuid::new_v4().to_string()).await
+    let kind = kind.unwrap_or_default();
+    resolve::plan_add_kind(&pack, &project_id, kind, pin_version.as_deref(), for_key.as_deref(), alt_id.as_deref(), &state.catalog(), false, &added_at, || uuid::Uuid::new_v4().to_string()).await
 }
 
 #[tauri::command]
@@ -332,10 +337,11 @@ fn plan_removal(pack: Pack, keys: Vec<String>) -> Vec<String> {
 }
 
 #[tauri::command]
-async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, loader: Loader) -> AppResult<Vec<resolve::FileInfo>> {
+async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, loader: Loader, kind: Option<model::EntryKind>) -> AppResult<Vec<resolve::FileInfo>> {
     use resolve::Catalog;
-    let vs = state.catalog().versions(&project_id, &mc_version, loader, false).await?;
-    Ok(resolve::compatible_files(&vs, &mc_version, loader))
+    let kind = kind.unwrap_or_default();
+    let vs = state.catalog().versions_of(&project_id, &mc_version, loader, kind, false).await?;
+    Ok(resolve::compatible_files_kind(&vs, &mc_version, loader, kind))
 }
 
 // ---------------- payloads ----------------
@@ -459,15 +465,36 @@ async fn export_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack, format: e
     if !plan.can_export {
         return Err(AppError::Invalid("Fix the errors in the pre-flight check before exporting.".into()));
     }
+    let overrides = state.templates.export_files(&pack)?;
+    if format == export::Format::Packwiz {
+        // A new folder named after the pack, inside the folder you pick.
+        let Some(fp) = app.dialog().file().set_title("Choose where to create the packwiz folder").blocking_pick_folder() else { return Ok(None) };
+        let parent = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+        let base = format!("{} packwiz", safe_file_name(&pack.name));
+        let mut dir = parent.join(&base);
+        let mut n = 2;
+        while dir.exists() {
+            dir = parent.join(format!("{base} ({n})"));
+            n += 1;
+        }
+        export::write_packwiz(&pack, &plan, &overrides, &dir)?;
+        return Ok(Some(dir.display().to_string()));
+    }
     let (label, ext) = match format {
         export::Format::Mrpack => ("Modrinth pack", "mrpack"),
         export::Format::CurseforgeZip => ("CurseForge pack", "zip"),
+        export::Format::Markdown => ("Markdown", "md"),
+        export::Format::Csv => ("CSV", "csv"),
+        export::Format::Packwiz => unreachable!(),
     };
-    let picked = app.dialog().file().set_title("Export pack").add_filter(label, &[ext]).set_file_name(format!("{}.{ext}", safe_file_name(&pack.name))).blocking_save_file();
+    let picked = app.dialog().file().set_title("Export").add_filter(label, &[ext]).set_file_name(format!("{}.{ext}", safe_file_name(&pack.name))).blocking_save_file();
     let Some(fp) = picked else { return Ok(None) };
     let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
-    let overrides = state.templates.export_files(&pack)?;
-    export::write_archive(&pack, &plan, &overrides, &path)?;
+    match format {
+        export::Format::Markdown => std::fs::write(&path, export::list_markdown(&pack, &plan)).map_err(|e| AppError::Storage(e.to_string()))?,
+        export::Format::Csv => std::fs::write(&path, export::list_csv(&pack, &plan)).map_err(|e| AppError::Storage(e.to_string()))?,
+        _ => export::write_archive(&pack, &plan, &overrides, &path)?,
+    }
     Ok(Some(path.display().to_string()))
 }
 

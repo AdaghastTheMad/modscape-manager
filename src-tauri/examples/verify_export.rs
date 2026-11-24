@@ -34,6 +34,7 @@ fn main() {
             continue;
         }
         let out = dest.join(rel);
+        if let Some(parent) = out.parent() { std::fs::create_dir_all(parent).unwrap(); }
         let data = if out.exists() { std::fs::read(&out).unwrap() } else {
             match http.get(url).send().and_then(|r| r.error_for_status()).and_then(|r| r.bytes()) {
                 Ok(b) => { std::fs::write(&out, &b).unwrap(); b.to_vec() }

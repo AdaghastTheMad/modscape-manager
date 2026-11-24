@@ -9,7 +9,7 @@ export type Reason = "user" | "dependency" | "payload";
 
 /** A payload candidate from a search hit (both site ids when the hit is merged). */
 export function candidateFromHit(h: SearchHit): import("./api").PCandidate {
-  const c: import("./api").PCandidate = { name: h.name, iconUrl: h.iconUrl ?? undefined };
+  const c: import("./api").PCandidate = { name: h.name, iconUrl: h.iconUrl ?? undefined, ...(h.kind && h.kind !== "mod" ? { kind: h.kind } : {}) };
   for (const [src, id] of [[h.source, h.id], [h.also?.source, h.also?.id]] as const) {
     if (src === "modrinth" && id) c.modrinthId = id;
     if (src === "curseforge" && id) c.curseforgeId = Number(id);
@@ -99,7 +99,7 @@ export function entryFromHit(h: SearchHit): PackEntry {
   if (h.also?.source === "curseforge") ref.curseforgeId = Number(h.also.id);
   return {
     ref,
-    kind: "mod", reason: "user", pulledInBy: [], payloadIds: [], tags: [], addedAt: nowIso(),
+    kind: h.kind ?? "mod", reason: "user", pulledInBy: [], payloadIds: [], tags: [], addedAt: nowIso(),
     display: {
       name: h.name, slug: h.slug, summary: h.summary, iconUrl: h.iconUrl, categories: h.categories, clientSide: h.clientSide,
       serverSide: h.serverSide, license: h.license, updated: h.updated, downloads: h.downloads,
@@ -193,3 +193,12 @@ export const entryName = (p: Pack, k: string) => p.entries[k]?.display.name ?? "
 
 /** A pack's record of an override template: the version (and file hashes) it last reviewed. */
 export interface AppliedTemplate { id: string; version: number; files?: Record<string, string> }
+
+/** Content kinds, for labels and the Browse picker. */
+export const KINDS: { id: import("./api").EntryKindT; label: string; one: string; search: string }[] = [
+  { id: "mod", label: "Mods", one: "mod", search: "Search mods…" },
+  { id: "resourcepack", label: "Resource packs", one: "resource pack", search: "Search resource packs…" },
+  { id: "shader", label: "Shaders", one: "shader", search: "Search shaders…" },
+  { id: "datapack", label: "Datapacks", one: "datapack", search: "Search datapacks…" },
+];
+export const kindLabel = (k: import("./api").EntryKindT | undefined) => KINDS.find((x) => x.id === (k ?? "mod"))!.one;

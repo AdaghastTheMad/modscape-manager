@@ -166,7 +166,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     if (!p || pending.has(projectId)) return;
     setPending((s) => new Set(s).add(projectId));
     try {
-      const plan = await api.planAdd(p, projectId, pin, forKey, altId);
+      const plan = await api.planAdd(p, projectId, pin, forKey, altId, hit?.kind);
       update((cur) => {
         const next = applyPlan(cur, plan);
         // Dropped on the graph: put (and pin) it where it was dropped.
@@ -229,7 +229,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     const failed: string[] = [];
     for (const r of a.add) {
       try {
-        const plan = await api.planAdd(p, r.projectId, null, null, r.altId);
+        const plan = await api.planAdd(p, r.projectId, null, null, r.altId, r.kind);
         plans.push(plan);
         p = applyPlan(p, plan);
       } catch (e) { failed.push(`${r.name}: ${(e as AppError).message}`); }
@@ -560,9 +560,9 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
       <div className={`workspace${view === "graph" ? " workspace--graph" : ""}`}>
         {browseMode === "payloads" ? (
           <PayloadsPane pack={pack} onOpen={(id) => setPayloadDialog({ id })} modeSwitch={
-            <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Mods" }, { id: "payloads", label: "Payloads" }]} />} />
+            <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Search" }, { id: "payloads", label: "Payloads" }]} />} />
         ) : <Browse pack={pack} onAdd={addHit} modeSwitch={
-          <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Mods" }, { id: "payloads", label: "Payloads" }]} />} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
+          <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Search" }, { id: "payloads", label: "Payloads" }]} />} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
           onSelect={(h) => { const k = findHit(pack, h); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />}
         <PackList pack={pack} analysis={analysis} analyzing={analyzing} undo={undo} notice={noticeEl}
           onDropPayload={(id) => setPayloadDialog({ id })} onDropHit={(h) => addHit(h)}

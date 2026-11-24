@@ -27,6 +27,8 @@ export interface SearchQuery {
   limit?: number;
   offset?: number;
   force?: boolean;
+  /** Mods (default), resource packs, shaders or datapacks. */
+  kind?: EntryKindT;
 }
 
 export interface Freshness { fetchedAt: number; fromCache: boolean; stale: boolean }
@@ -34,6 +36,8 @@ export interface Freshness { fetchedAt: number; fromCache: boolean; stale: boole
 export interface SearchHit {
   source: Source;
   id: string;
+  /** Set by the UI: which content tab the hit came from (adds it as that kind). */
+  kind?: EntryKindT;
   slug: string;
   name: string;
   summary: string;
@@ -98,8 +102,8 @@ export interface AddPlan {
 }
 
 // ---- export / import ----
-export type ExportFormat = "mrpack" | "curseforgeZip";
-export interface ExportFile { key: string; name: string; source: Source; path: string; projectId: string; fileId: string; versionNumber: string; url: string; size: number; distributionBlocked: boolean }
+export type ExportFormat = "mrpack" | "curseforgeZip" | "packwiz" | "markdown" | "csv";
+export interface ExportFile { key: string; name: string; source: Source; kind: EntryKindT; path: string; projectId: string; fileId: string; versionNumber: string; url: string; size: number; distributionBlocked: boolean }
 export interface Excluded { key: string; name: string; reason: string }
 export interface ExportProblem { severity: Severity; message: string; fixes: Fix[]; fixLabel?: string | null }
 export interface ExportPlan { format: ExportFormat; files: ExportFile[]; excluded: Excluded[]; problems: ExportProblem[]; loaderLabel: string; canExport: boolean; overrides: number }
@@ -138,9 +142,9 @@ export type PItem = ({ kind: "mod" } & PSlot) | { kind: "choice"; id: string; la
 export interface Payload { id: string; name: string; description: string; items: PItem[]; includes: string[]; version: number; starter: boolean; createdAt: string; updatedAt: string; [extra: string]: unknown }
 export type SlotStatus =
   | { status: "inPack"; key: string; name: string }
-  | { status: "add"; projectId: string; altId?: string | null; name: string; iconUrl?: string | null; fallback: boolean }
+  | { status: "add"; projectId: string; altId?: string | null; name: string; iconUrl?: string | null; fallback: boolean; kind: EntryKindT }
   | { status: "noBuild"; tried: string[] }
-  | { status: "notYet"; name: string; kind: EntryKindT };
+
 export type PlanRow = { slotId: string; from: string; choice?: string | null; label: string } & SlotStatus;
 export interface ChoiceView { id: string; label: string; from: string; options: [string, string][]; chosen: string; otherOptionInPack: string[] }
 export interface RemovedRow { key: string; name: string; neededBy: string[]; otherPayloads: string[]; userAdded: boolean; suggestRemove: boolean }
@@ -171,7 +175,7 @@ export const api = {
   clearCurseforgeKey: () => call<KeyStatus>("clear_curseforge_key"),
   search: (source: Source, query: SearchQuery) => call<SearchPage>("search", { source, query }),
   projectDetails: (source: Source, id: string, force = false) => call<ProjectDetails>("project_details", { source, id, force }),
-  categories: (force = false) => call<Category[]>("categories", { force }),
+  categories: (force = false, kind: EntryKindT = "mod") => call<Category[]>("categories", { force, kind }),
   gameVersions: (force = false) => call<GameVersion[]>("game_versions", { force }),
   loaderVersions: (loader: Loader, mcVersion: string, force = false) => call<LoaderVersions>("loader_versions", { loader, mcVersion, force }),
   icon: (url: string) => call<string>("icon", { url }),
@@ -185,14 +189,14 @@ export const api = {
   analyzePack: (pack: Pack, force = false) => call<Analysis>("analyze_pack", { pack, force }),
   /** forKey: add it as a dependency of that entry instead of as the user's own pick. */
   /** projectId: Modrinth id, or "cf:<id>" for CurseForge. altId: the same mod on the other site. */
-  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null, altId?: string | null) =>
-    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, altId: altId ?? null, addedAt: new Date().toISOString() }),
+  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null, altId?: string | null, kind?: EntryKindT) =>
+    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, altId: altId ?? null, addedAt: new Date().toISOString(), kind: kind ?? "mod" }),
   searchAll: (query: SearchQuery, sources: Source[], prefer: Source, mrOffset = 0, cfOffset = 0) =>
     call<MergedPage>("search_all", { query, sources, prefer, mrOffset, cfOffset }),
   findMatches: (pack: Pack, key: string) => call<Candidate[]>("find_matches", { pack, key }),
   matchAll: (pack: Pack) => call<EntryMatches[]>("match_all", { pack }),
   planRemoval: (pack: Pack, keys: string[]) => call<string[]>("plan_removal", { pack, keys }),
-  entryVersions: (projectId: string, mcVersion: string, loader: Loader) => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader }),
+  entryVersions: (projectId: string, mcVersion: string, loader: Loader, kind: EntryKindT = "mod") => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader, kind }),
   planPort: (pack: Pack, target: PortTarget) => call<PortPlan>("plan_port", { pack, target }),
   listPayloads: () => call<Payload[]>("list_payloads"),
   savePayload: (payload: Payload) => call<SavedPayload>("save_payload", { payload }),

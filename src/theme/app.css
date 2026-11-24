@@ -145,7 +145,7 @@
 .plan-row__mark { width: 16px; text-align: center; font-family: var(--font-pixel); }
 .plan-row--inPack .plan-row__mark { color: var(--emerald); }
 .plan-row--noBuild .plan-row__mark { color: var(--redstone); }
-.plan-row--noBuild, .plan-row--notYet { opacity: 0.75; }
+.plan-row--noBuild { opacity: 0.75; }
 .removed-box { border-left: 3px solid var(--redstone); padding-left: 8px; }
 /* WKWebView: drag the whole row, never just its icon. */
 .hit[draggable="true"] { -webkit-user-drag: element; }

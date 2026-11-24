@@ -111,9 +111,9 @@ fn required_names(a: &resolve::Analysis) -> HashMap<String, HashSet<String>> {
     a.entries.iter().map(|(k, r)| (k.clone(), r.required.iter().map(|d| d.project_id.clone()).collect())).collect()
 }
 
-async fn has_build(cat: &dyn Catalog, pid: &str, mc: &str, loader: Loader, policy: crate::model::ChannelPolicy) -> bool {
-    let vs = cat.versions(pid, mc, loader, false).await.unwrap_or_default();
-    resolve::select_version(&vs, mc, loader, policy).is_some()
+async fn has_build(cat: &dyn Catalog, pid: &str, mc: &str, loader: Loader, kind: crate::model::EntryKind, policy: crate::model::ChannelPolicy) -> bool {
+    let vs = cat.versions_of(pid, mc, loader, kind, false).await.unwrap_or_default();
+    resolve::select_version_kind(&vs, mc, loader, kind, policy).is_some()
 }
 
 pub async fn plan_port(pack: &Pack, t: &PortTarget, cat: &dyn Catalog, now_iso: &str, mut new_key: impl FnMut() -> String) -> AppResult<PortPlan> {
@@ -171,13 +171,13 @@ pub async fn plan_port(pack: &Pack, t: &PortTarget, cat: &dyn Catalog, now_iso: 
     let checks: Vec<(String, PackEntry, bool, Option<Source>)> = stream::iter(roots)
         .map(|(k, e)| async move {
             let ok = match project_of(&e) {
-                Some(p) => has_build(cat, &p, mc_ref, t.loader, policy).await,
+                Some(p) => has_build(cat, &p, mc_ref, t.loader, e.kind, policy).await,
                 None => false,
             };
             let mut alt = None;
             if !ok {
                 if let Some((s, id)) = other_site(&e) {
-                    if has_build(cat, &id, mc_ref, t.loader, policy).await {
+                    if has_build(cat, &id, mc_ref, t.loader, e.kind, policy).await {
                         alt = Some(s);
                     }
                 }
@@ -273,7 +273,7 @@ pub async fn plan_port(pack: &Pack, t: &PortTarget, cat: &dyn Catalog, now_iso: 
             let before = &before;
             async move {
                 let has_build = match project_of(&e) {
-                    Some(p) => has_build(cat, &p, mc_ref, t.loader, policy).await,
+                    Some(p) => has_build(cat, &p, mc_ref, t.loader, e.kind, policy).await,
                     None => false,
                 };
                 let was_needed_by = before.entries.get(&k).map(|r| r.required_by.iter().filter_map(|x| pack.entries.get(x)).map(|x| x.display.name.clone()).collect()).unwrap_or_default();

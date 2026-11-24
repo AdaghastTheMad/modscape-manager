@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { unsaved, useUnsavedGuard } from "../unsaved";
-import { api, type AppError, type Loader, type Payload, type PCandidate, type PChoiceOption, type PItem, type PSlot, type SearchHit } from "../api";
-import { Button, ErrorNotice, Input, ModIcon, Modal, Notice, Panel, SourceBadge } from "../components/kit";
+import { api, type AppError, type EntryKindT, type Loader, type Payload, type PCandidate, type PChoiceOption, type PItem, type PSlot, type SearchHit } from "../api";
+import { Button, ErrorNotice, Input, ModIcon, Modal, Notice, Panel, Select, SourceBadge } from "../components/kit";
 import { fmtCompact, useDebounced } from "../hooks";
-import { candidateFromHit, LOADERS, nowIso } from "../model";
+import { candidateFromHit, KINDS, LOADERS, nowIso } from "../model";
 
 const uid = () => crypto.randomUUID().slice(0, 8);
 
@@ -32,6 +32,7 @@ export function describePayload(p: Payload): string {
 // ---------------------------------------------------------------- search picker
 export function ModPicker({ onPick, onClose, placeholder = "Search Modrinth and CurseForge…" }: { onPick: (c: PCandidate) => void; onClose?: () => void; placeholder?: string }) {
   const [text, setText] = useState("");
+  const [kind, setKind] = useState<EntryKindT>("mod");
   const q = useDebounced(text, 300);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [error, setError] = useState<AppError | null>(null);
@@ -39,13 +40,16 @@ export function ModPicker({ onPick, onClose, placeholder = "Search Modrinth and 
     if (!q.trim()) { setHits([]); return; }
     let live = true;
     // Payloads are version-agnostic: search everything.
-    api.searchAll({ text: q, includeIncompatible: true, limit: 8 }, ["modrinth", "curseforge"], "modrinth")
-      .then((r) => live && setHits(r.hits), (e) => live && setError(e));
+    api.searchAll({ text: q, includeIncompatible: true, limit: 8, kind }, ["modrinth", "curseforge"], "modrinth")
+      .then((r) => live && setHits(r.hits.map((h) => ({ ...h, kind }))), (e) => live && setError(e));
     return () => { live = false; };
-  }, [q]);
+  }, [q, kind]);
   return (
     <div className="mod-picker stack" style={{ gap: 4 }}>
       <div className="row">
+        <Select aria-label="Content type" value={kind} onChange={(e) => setKind(e.target.value as EntryKindT)}>
+          {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+        </Select>
         <div className="grow"><Input autoFocus placeholder={placeholder} value={text} onChange={(e) => setText(e.target.value)} aria-label="Search for a mod" /></div>
         {onClose && <Button size="small" onClick={onClose}>Cancel</Button>}
       </div>

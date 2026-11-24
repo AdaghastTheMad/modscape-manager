@@ -7,8 +7,16 @@ import type { Pack } from "../../model";
 type Tab = ExportFormat | "project";
 
 const FORMAT_INFO: Record<ExportFormat, string> = {
-  mrpack: "Modrinth's format. Imports into Prism, the Modrinth App and ATLauncher. Holds Modrinth-sourced mods.",
-  curseforgeZip: "CurseForge's format. Imports into the CurseForge app and Prism. Holds CurseForge-sourced mods.",
+  mrpack: "Modrinth's format. Imports into Prism, the Modrinth App and ATLauncher. Holds Modrinth-sourced files.",
+  curseforgeZip: "CurseForge's format. Imports into the CurseForge app and Prism. Holds CurseForge-sourced files (no datapacks).",
+  packwiz: "A packwiz folder: one small .pw.toml per file, each from the site it's set to, so mixed packs work. For packwiz-installer and git-based workflows. You pick a folder; a new \"<pack> packwiz\" folder is made inside it.",
+  markdown: "A readable list (a table per content type) with names, versions, sites and links, for a pack page or sharing.",
+  csv: "A spreadsheet-friendly list: name, type, version, site, link, category, and why it's in the pack.",
+};
+const DONE_HINT: Partial<Record<ExportFormat, string>> = {
+  mrpack: "In Prism: Add Instance → Import → pick this file.",
+  curseforgeZip: "In Prism: Add Instance → Import → pick this file.",
+  packwiz: "Serve or commit this folder; packwiz-installer reads pack.toml.",
 };
 
 export function ExportDialog({ pack, onClose, onFixes, onSaveProject }: {
@@ -44,7 +52,8 @@ export function ExportDialog({ pack, onClose, onFixes, onSaveProject }: {
     <Modal title="Export pack" width={720} onClose={onClose}>
       <div className="stack-lg">
         <Tabs label="Format" underline value={tab} onChange={setTab} tabs={[
-          { id: "mrpack", label: ".mrpack" }, { id: "curseforgeZip", label: "CurseForge zip" }, { id: "project", label: "Planner project" },
+          { id: "mrpack", label: ".mrpack" }, { id: "curseforgeZip", label: "CurseForge zip" }, { id: "packwiz", label: "packwiz" },
+          { id: "markdown", label: "Markdown list" }, { id: "csv", label: "CSV list" }, { id: "project", label: "Planner project" },
         ]} />
         {tab === "project" ? (
           <div className="stack">
@@ -53,14 +62,14 @@ export function ExportDialog({ pack, onClose, onFixes, onSaveProject }: {
           </div>
         ) : (
           <div className="stack">
-            <p className="muted">{FORMAT_INFO[tab]} The launcher downloads the mods when it installs the pack; nothing is downloaded here.</p>
+            <p className="muted">{FORMAT_INFO[tab]}{tab === "markdown" || tab === "csv" ? "" : " The launcher downloads the files when it installs the pack; nothing is downloaded here."}</p>
             {error && <ErrorNotice error={error} />}
             {!plan && !error && <p className="muted">Checking every mod's file…</p>}
             {plan && (
               <>
                 <Notice tone={plan.canExport ? (plan.problems.length ? "warn" : "ok") : "error"}
-                  title={plan.canExport ? `Ready: ${plan.files.length} mod${plan.files.length === 1 ? "" : "s"} · ${plan.loaderLabel}` : "Can't export yet"}>
-                  {plan.files.length > 0 && <div className="muted">Launchers will download about {fmtCompact.format(total / 1024 / 1024)} MB.</div>}
+                  title={plan.canExport ? `Ready: ${plan.files.length} file${plan.files.length === 1 ? "" : "s"}${tab === "markdown" || tab === "csv" ? "" : ` · ${plan.loaderLabel}`}` : "Can't export yet"}>
+                  {plan.files.length > 0 && tab !== "markdown" && tab !== "csv" && <div className="muted">Launchers will download about {fmtCompact.format(total / 1024 / 1024)} MB.</div>}
                 </Notice>
                 {plan.problems.length > 0 && (
                   <ul className="issue-list">
@@ -81,11 +90,11 @@ export function ExportDialog({ pack, onClose, onFixes, onSaveProject }: {
                 )}
                 <details className="export-list" open={showFiles} onToggle={(e) => setShowFiles((e.target as HTMLDetailsElement).open)}>
                   <summary>{plan.files.length} included</summary>
-                  <ul>{plan.files.map((f) => <li key={f.key}>{f.name} <span className="muted">· {f.versionNumber}{f.distributionBlocked ? " · manual download" : ""}</span></li>)}</ul>
+                  <ul>{plan.files.map((f) => <li key={f.key}>{f.name} <span className="muted">· {f.versionNumber} · {f.path.slice(0, f.path.lastIndexOf("/") + 1)}{f.source === "curseforge" && tab === "packwiz" ? " · CurseForge" : ""}{f.distributionBlocked ? " · manual download" : ""}</span></li>)}</ul>
                 </details>
               </>
             )}
-            {done && <Notice tone="ok" title="Exported">{done}<div className="muted">In Prism: Add Instance → Import → pick this file.</div></Notice>}
+            {done && <Notice tone="ok" title="Exported">{done}{DONE_HINT[tab as ExportFormat] && <div className="muted">{DONE_HINT[tab as ExportFormat]}</div>}</Notice>}
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <Button onClick={onClose}>Close</Button>
               <Button variant="primary" disabled={!plan?.canExport || busy} onClick={doExport}>{busy ? "Exporting…" : "Export…"}</Button>

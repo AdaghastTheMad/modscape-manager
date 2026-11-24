@@ -252,13 +252,10 @@ pub enum SlotStatus {
     InPack { key: String, name: String },
     /// Will be added: catalog id of the winning candidate (+ its other-site id).
     #[serde(rename_all = "camelCase")]
-    Add { project_id: String, alt_id: Option<String>, name: String, icon_url: Option<String>, fallback: bool },
+    Add { project_id: String, alt_id: Option<String>, name: String, icon_url: Option<String>, fallback: bool, kind: EntryKind },
     /// No candidate fits this version/loader or has a build.
     #[serde(rename_all = "camelCase")]
     NoBuild { tried: Vec<String> },
-    /// Not a mod (resource packs, shaders, datapacks arrive in milestone 11).
-    #[serde(rename_all = "camelCase")]
-    NotYet { name: String, kind: EntryKind },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -364,19 +361,16 @@ async fn resolve_slot(pack: &Pack, s: &Slot, cat: &dyn Catalog) -> SlotStatus {
     };
     let mut tried = Vec::new();
     for (i, c) in s.candidates.iter().enumerate() {
-        if c.kind != EntryKind::Mod {
-            return SlotStatus::NotYet { name: c.name.clone(), kind: c.kind };
-        }
         if !c.fits(&pack.mc_version, pack.loader) {
             continue;
         }
         tried.push(c.name.clone());
         let ids = c.ids(prefer);
         for (j, pid) in ids.iter().enumerate() {
-            let vs = cat.versions(pid, &pack.mc_version, pack.loader, false).await.unwrap_or_default();
-            if resolve::select_version(&vs, &pack.mc_version, pack.loader, pack.channel_policy).is_some() {
+            let vs = cat.versions_of(pid, &pack.mc_version, pack.loader, c.kind, false).await.unwrap_or_default();
+            if resolve::select_version_kind(&vs, &pack.mc_version, pack.loader, c.kind, pack.channel_policy).is_some() {
                 let alt = ids.iter().enumerate().find(|(x, _)| *x != j).map(|(_, id)| id.clone());
-                return SlotStatus::Add { project_id: pid.clone(), alt_id: alt, name: c.name.clone(), icon_url: c.icon_url.clone(), fallback: i > 0 };
+                return SlotStatus::Add { project_id: pid.clone(), alt_id: alt, name: c.name.clone(), icon_url: c.icon_url.clone(), fallback: i > 0, kind: c.kind };
             }
         }
     }
@@ -721,13 +715,13 @@ mod tests {
     }
 
     #[test]
-    fn resource_packs_wait_for_m11() {
-        let f = Fixture::load();
-        let mut rp = cand("Fresh Animations", "50dA9Sha");
+    fn resource_pack_candidates_resolve_as_resource_packs() {
+        let cat = crate::resolve::tests::KindCat::new();
+        let mut rp = cand("Fresh Animations", "rpFresh");
         rp.kind = EntryKind::Resourcepack;
         let p = payload("p", vec![PayloadItem::Mod(slot("s", vec![rp]))], vec![]);
-        let r = block(plan(&pack_for("1.21.1", Loader::Fabric), &p, &HashMap::new(), &HashMap::new(), &f));
-        assert!(matches!(&r.rows[0].status, SlotStatus::NotYet { kind: EntryKind::Resourcepack, .. }));
+        let r = block(plan(&pack_for("1.21.1", Loader::Fabric), &p, &HashMap::new(), &HashMap::new(), &cat));
+        assert!(matches!(&r.rows[0].status, SlotStatus::Add { kind: EntryKind::Resourcepack, .. }), "{:?}", r.rows[0].status);
     }
 
     #[test]

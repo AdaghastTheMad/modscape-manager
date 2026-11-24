@@ -51,6 +51,27 @@ fn zip_text(bytes: &[u8], name: &str) -> AppResult<(String, bool)> {
 struct Found {
     project: String, // catalog id (cf: for CurseForge)
     file: String,    // catalog id (cf: for CurseForge)
+    kind: EntryKind,
+}
+
+/// What a file in an instance or pack is, by the folder it sits in.
+pub fn kind_of_path(path: &str) -> Option<EntryKind> {
+    let p = path.trim_start_matches("./");
+    if p.starts_with("mods/") {
+        Some(EntryKind::Mod)
+    } else if p.starts_with("resourcepacks/") {
+        Some(EntryKind::Resourcepack)
+    } else if p.starts_with("shaderpacks/") {
+        Some(EntryKind::Shader)
+    } else if p.starts_with("config/paxi/datapacks/") || p.starts_with("datapacks/") {
+        Some(EntryKind::Datapack)
+    } else {
+        None
+    }
+}
+
+fn file_part(path: &str) -> String {
+    path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
 fn new_pack(name: &str, mc: &str, loader: Loader, loader_version: &str) -> Pack {
@@ -80,7 +101,8 @@ async fn finish(mut pack: Pack, found: Vec<Found>, cat: &dyn Catalog, notes: &mu
             PackEntry {
                 mod_ref: resolve::mod_ref_for(&f.project, None),
                 file_id: Some(f.file.strip_prefix(curseforge::PREFIX).unwrap_or(&f.file).to_string()),
-                kind: EntryKind::Mod,
+                // CurseForge says what a project is; otherwise the folder it was in does.
+                kind: infos.get(&f.project).and_then(|p| p.kind).unwrap_or(f.kind),
                 reason: Reason::User,
                 pulled_in_by: vec![],
                 payload_ids: vec![],
@@ -185,30 +207,30 @@ pub async fn import_mrpack(bytes: &[u8], look: &dyn Lookup) -> AppResult<Importe
         .ok_or_else(|| AppError::Invalid("The pack doesn't name a mod loader (vanilla packs aren't supported).".into()))?;
     let mut notes = Vec::new();
     let mut unknown = Vec::new();
-    let mods: Vec<&MrFile> = idx.files.iter().filter(|f| f.path.starts_with("mods/")).collect();
+    let mods: Vec<(&MrFile, EntryKind)> = idx.files.iter().filter_map(|f| kind_of_path(&f.path).map(|k| (f, k))).collect();
     let skipped = idx.files.len() - mods.len();
     if skipped > 0 {
-        notes.push(format!("Skipped {skipped} non-mod file{} (resource packs, shaders and the like arrive in milestone 11).", if skipped == 1 { "" } else { "s" }));
+        notes.push(format!("Skipped {skipped} file{} outside mods/, resourcepacks/, shaderpacks/ and datapacks.", if skipped == 1 { "" } else { "s" }));
     }
-    let hashes: Vec<String> = mods.iter().filter_map(|f| f.hashes.get("sha1").map(|h| h.to_lowercase())).collect();
+    let hashes: Vec<String> = mods.iter().filter_map(|(f, _)| f.hashes.get("sha1").map(|h| h.to_lowercase())).collect();
     let by_hash = look.modrinth_by_sha1(&hashes).await?;
     let mut found = Vec::new();
     let mut cf_files = Vec::new();
-    for f in mods {
+    for (f, kind) in mods {
         if let Some(v) = f.hashes.get("sha1").and_then(|h| by_hash.get(&h.to_lowercase())) {
-            found.push(Found { project: v.project_id.clone(), file: v.id.clone() });
+            found.push(Found { project: v.project_id.clone(), file: v.id.clone(), kind });
         } else if let Some(n) = f.downloads.iter().find_map(|u| cf_file_id_from_url(u)) {
-            cf_files.push((n, f.path.clone()));
+            cf_files.push((n, f.path.clone(), kind));
         } else {
-            unknown.push(f.path.trim_start_matches("mods/").to_string());
+            unknown.push(file_part(&f.path));
         }
     }
-    for (n, path) in cf_files {
+    for (n, path, kind) in cf_files {
         match look.version(&cf_id(n), false).await {
-            Ok(Some(v)) => found.push(Found { project: v.project_id.clone(), file: v.id }),
-            Ok(None) => unknown.push(path.trim_start_matches("mods/").to_string()),
+            Ok(Some(v)) => found.push(Found { project: v.project_id.clone(), file: v.id, kind }),
+            Ok(None) => unknown.push(file_part(&path)),
             Err(AppError::NoCurseForgeKey) => {
-                unknown.push(path.trim_start_matches("mods/").to_string());
+                unknown.push(file_part(&path));
                 if !notes.iter().any(|n: &String| n.contains("CurseForge key")) {
                     notes.push("Some files come from CurseForge; add a CurseForge key in Settings to identify them.".into());
                 }
@@ -216,7 +238,7 @@ pub async fn import_mrpack(bytes: &[u8], look: &dyn Lookup) -> AppResult<Importe
             Err(e) => return Err(e),
         }
     }
-    notes.insert(0, format!("Identified {} of {} mods.", found.len(), found.len() + unknown.len()));
+    notes.insert(0, format!("Identified {} of {} files.", found.len(), found.len() + unknown.len()));
     let pack = finish(new_pack(&idx.name, &mc, loader, &lv), found, look, &mut notes).await;
     Ok(Imported { pack, notes, unknown, has_overrides })
 }
@@ -265,8 +287,9 @@ pub async fn import_cf_zip(bytes: &[u8], look: &dyn Lookup) -> AppResult<Importe
     let lv = if loader == Loader::Forge { format!("{}-{lv}", m.minecraft.version) } else { lv };
     // Make sure there's a key before promising anything.
     look.projects(&[cf_id(m.files.first().map(|f| f.project_id).unwrap_or(0))], false).await?;
-    let found = m.files.iter().map(|f| Found { project: cf_id(f.project_id), file: cf_id(f.file_id) }).collect();
-    let mut notes = vec![format!("Read {} mods from the manifest.", m.files.len())];
+    // The kind comes from each project's CurseForge class (in `finish`).
+    let found = m.files.iter().map(|f| Found { project: cf_id(f.project_id), file: cf_id(f.file_id), kind: EntryKind::Mod }).collect();
+    let mut notes = vec![format!("Read {} files from the manifest.", m.files.len())];
     let pack = finish(new_pack(&m.name, &m.minecraft.version, loader, &lv), found, look, &mut notes).await;
     Ok(Imported { pack, notes, unknown: vec![], has_overrides })
 }
@@ -317,94 +340,102 @@ pub async fn import_prism_instance(dir: &Path, look: &dyn Lookup) -> AppResult<I
         .and_then(|cfg| cfg.lines().find_map(|l| l.strip_prefix("name=").map(|s| s.trim().to_string())))
         .unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
     let game = ["minecraft", ".minecraft"].iter().map(|d| dir.join(d)).find(|p| p.is_dir()).ok_or_else(|| AppError::Invalid("The instance has no minecraft folder.".into()))?;
-    let mods_dir = game.join("mods");
     let has_overrides = game.join("config").is_dir() || game.join("kubejs").is_dir();
 
     let mut notes = Vec::new();
     let mut unknown = Vec::new();
     let mut found = Vec::new();
-    let mut by_filename: HashSet<String> = HashSet::new();
 
-    // 1. Prism's own records.
-    let index = mods_dir.join(".index");
-    if index.is_dir() {
-        for ent in std::fs::read_dir(&index).map_err(|e| AppError::Invalid(e.to_string()))?.flatten() {
-            let p = ent.path();
-            if p.extension().and_then(|e| e.to_str()) != Some("toml") {
-                continue;
-            }
-            let Ok(t) = read(&p) else { continue };
-            let Ok(v) = t.parse::<toml::Table>() else {
-                notes.push(format!("Skipped an unreadable record: {}", p.file_name().unwrap_or_default().to_string_lossy()));
-                continue;
-            };
-            let filename = v.get("filename").and_then(|x| x.as_str()).unwrap_or_default().to_string();
-            let upd = v.get("update").and_then(|u| u.as_table());
-            let mr = upd.and_then(|u| u.get("modrinth")).and_then(|m| m.as_table());
-            let cf = upd.and_then(|u| u.get("curseforge")).and_then(|m| m.as_table());
-            if let (Some(pid), Some(vid)) = (mr.and_then(|m| m.get("mod-id")).and_then(|x| x.as_str()), mr.and_then(|m| m.get("version")).and_then(|x| x.as_str())) {
-                found.push(Found { project: pid.into(), file: vid.into() });
-                by_filename.insert(filename);
-            } else if let (Some(pid), Some(fid)) = (cf.and_then(|m| m.get("project-id")).and_then(|x| x.as_integer()), cf.and_then(|m| m.get("file-id")).and_then(|x| x.as_integer())) {
-                found.push(Found { project: cf_id(pid as u64), file: cf_id(fid as u64) });
-                by_filename.insert(filename);
+    let mut disabled = 0;
+    let mut loose: Vec<(String, Vec<u8>, EntryKind)> = Vec::new();
+    // Mods, resource packs, shader packs and Paxi's global datapacks, each with Prism's records when it has them.
+    for (folder, kind, exts) in [
+        ("mods", EntryKind::Mod, &[".jar"][..]),
+        ("resourcepacks", EntryKind::Resourcepack, &[".zip"][..]),
+        ("shaderpacks", EntryKind::Shader, &[".zip"][..]),
+        ("config/paxi/datapacks", EntryKind::Datapack, &[".zip"][..]),
+    ] {
+        let dir = game.join(folder);
+        if !dir.is_dir() {
+            continue;
+        }
+        let mut by_filename: HashSet<String> = HashSet::new();
+        // 1. Prism's own records.
+        let index = dir.join(".index");
+        if index.is_dir() {
+            for ent in std::fs::read_dir(&index).map_err(|e| AppError::Invalid(e.to_string()))?.flatten() {
+                let p = ent.path();
+                if p.extension().and_then(|e| e.to_str()) != Some("toml") {
+                    continue;
+                }
+                let Ok(t) = read(&p) else { continue };
+                let Ok(v) = t.parse::<toml::Table>() else {
+                    notes.push(format!("Skipped an unreadable record: {}", p.file_name().unwrap_or_default().to_string_lossy()));
+                    continue;
+                };
+                let filename = v.get("filename").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+                let upd = v.get("update").and_then(|u| u.as_table());
+                let mr = upd.and_then(|u| u.get("modrinth")).and_then(|m| m.as_table());
+                let cf = upd.and_then(|u| u.get("curseforge")).and_then(|m| m.as_table());
+                if let (Some(pid), Some(vid)) = (mr.and_then(|m| m.get("mod-id")).and_then(|x| x.as_str()), mr.and_then(|m| m.get("version")).and_then(|x| x.as_str())) {
+                    found.push(Found { project: pid.into(), file: vid.into(), kind });
+                    by_filename.insert(filename);
+                } else if let (Some(pid), Some(fid)) = (cf.and_then(|m| m.get("project-id")).and_then(|x| x.as_integer()), cf.and_then(|m| m.get("file-id")).and_then(|x| x.as_integer())) {
+                    found.push(Found { project: cf_id(pid as u64), file: cf_id(fid as u64), kind });
+                    by_filename.insert(filename);
+                }
             }
         }
-    }
-
-    // 2. Jars without a record: hash lookup on Modrinth, then CurseForge fingerprints.
-    let mut loose: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut disabled = 0;
-    if mods_dir.is_dir() {
-        for ent in std::fs::read_dir(&mods_dir).map_err(|e| AppError::Invalid(e.to_string()))?.flatten() {
+        // 2. Files without a record (hash lookups below).
+        for ent in std::fs::read_dir(&dir).map_err(|e| AppError::Invalid(e.to_string()))?.flatten() {
             let p = ent.path();
             let fname = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             if fname.ends_with(".disabled") {
                 disabled += 1;
                 continue;
             }
-            if !p.is_file() || !fname.ends_with(".jar") || by_filename.contains(&fname) {
+            if !p.is_file() || !exts.iter().any(|x| fname.ends_with(x)) || by_filename.contains(&fname) {
                 continue;
             }
             match std::fs::read(&p) {
-                Ok(b) => loose.push((fname, b)),
+                Ok(b) => loose.push((fname, b, kind)),
                 Err(e) => notes.push(format!("Couldn't read {fname}: {e}")),
             }
         }
     }
     if disabled > 0 {
-        notes.push(format!("Left out {disabled} disabled mod{}.", if disabled == 1 { "" } else { "s" }));
+        notes.push(format!("Left out {disabled} disabled file{}.", if disabled == 1 { "" } else { "s" }));
     }
     if !loose.is_empty() {
-        let sha: Vec<String> = loose.iter().map(|(_, b)| sha1_hex(b)).collect();
+        let sha: Vec<String> = loose.iter().map(|(_, b, _)| sha1_hex(b)).collect();
         let by_hash = look.modrinth_by_sha1(&sha).await.unwrap_or_default();
         let mut rest = Vec::new();
-        for ((fname, bytes), h) in loose.into_iter().zip(sha) {
+        for ((fname, bytes, kind), h) in loose.into_iter().zip(sha) {
             match by_hash.get(&h) {
-                Some(v) => found.push(Found { project: v.project_id.clone(), file: v.id.clone() }),
-                None => rest.push((fname, curseforge::fingerprint(&bytes))),
+                Some(v) => found.push(Found { project: v.project_id.clone(), file: v.id.clone(), kind }),
+                None => rest.push((fname, curseforge::fingerprint(&bytes), kind)),
             }
         }
         if !rest.is_empty() {
-            let fps: Vec<u32> = rest.iter().map(|(_, f)| *f).collect();
+            let fps: Vec<u32> = rest.iter().map(|(_, f, _)| *f).collect();
             match look.curseforge_by_fingerprint(&fps).await {
                 Ok(m) => {
-                    for (fname, fp) in rest {
+                    for (fname, fp, kind) in rest {
                         match m.get(&fp) {
-                            Some(v) => found.push(Found { project: v.project_id.clone(), file: v.id.clone() }),
+                            Some(v) => found.push(Found { project: v.project_id.clone(), file: v.id.clone(), kind }),
                             None => unknown.push(fname),
                         }
                     }
                 }
                 Err(AppError::NoCurseForgeKey) => {
-                    notes.push("Some jars aren't on Modrinth; add a CurseForge key in Settings to identify them.".into());
-                    unknown.extend(rest.into_iter().map(|(f, _)| f));
+                    notes.push("Some files aren't on Modrinth; add a CurseForge key in Settings to identify them.".into());
+                    unknown.extend(rest.into_iter().map(|(f, _, _)| f));
                 }
-                Err(_) => unknown.extend(rest.into_iter().map(|(f, _)| f)),
+                Err(_) => unknown.extend(rest.into_iter().map(|(f, _, _)| f)),
             }
         }
     }
-    notes.insert(0, format!("Identified {} of {} mods.", found.len(), found.len() + unknown.len()));
+    notes.insert(0, format!("Identified {} of {} files.", found.len(), found.len() + unknown.len()));
     let pack = finish(new_pack(&name, &mc, loader, &lv), found, look, &mut notes).await;
     Ok(Imported { pack, notes, unknown, has_overrides })
 }

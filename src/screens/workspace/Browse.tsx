@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { endDrag, startDrag } from "../../dnd";
-import { api, type AppError, type Category, type MergedPage, type SearchHit, type Sort, type Source } from "../../api";
+import { api, type AppError, type Category, type EntryKindT, type MergedPage, type SearchHit, type Sort, type Source } from "../../api";
 import { Button, ErrorNotice, Input, ModIcon, Notice, Panel, Select, SourceBadge, Tooltip } from "../../components/kit";
 import { fmtCompact, fmtDate, useDebounced } from "../../hooks";
-import { findHit, loaderLabel, preferredSource, prettyCategory, type Pack } from "../../model";
+import { findHit, KINDS, loaderLabel, preferredSource, prettyCategory, type Pack } from "../../model";
+
+/** The content tab, kept while the app runs. */
+let lastKind: EntryKindT = "mod";
+const KIND_HINTS: Partial<Record<EntryKindT, string>> = {
+  resourcepack: "Resource packs go in resourcepacks/. One made for another Minecraft version usually still works; the checks say when that's the case.",
+  shader: "Shader packs go in shaderpacks/ and need Iris (Oculus on Forge); the checks offer to add it.",
+  datapack: "Datapacks load in every world through Paxi, which is added with the first one. If a datapack is also a mod (Terralith, for example), the mod on the Mods tab is usually the better pick.",
+};
 
 type SiteFilter = "both" | Source;
 
@@ -15,6 +23,8 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending, 
   pack: Pack; onAdd: (h: SearchHit) => void; onSelect: (h: SearchHit) => void; selectedId?: string; pending: Set<string>; modeSwitch?: React.ReactNode;
   searchRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const [kind, setKindState] = useState<EntryKindT>(lastKind);
+  const setKind = (k: EntryKindT) => { lastKind = k; setKindState(k); setCategory(""); setSide(""); };
   const [text, setText] = useState("");
   const [category, setCategory] = useState("");
   const [side, setSide] = useState<"" | "client" | "server">("");
@@ -30,7 +40,7 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending, 
   const reqId = useRef(0);
   const prefer = preferredSource(pack);
 
-  useEffect(() => { api.categories().then(setCats, () => {}); }, []);
+  useEffect(() => { setCats([]); api.categories(false, kind).then(setCats, () => {}); }, [kind]);
 
   const run = useCallback(async (more: MergedPage | null, force = false) => {
     const id = ++reqId.current;
@@ -41,9 +51,10 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending, 
     try {
       const res = await api.searchAll({
         text: q, gameVersion: pack.mcVersion, loader: pack.loader, categories: category ? [category] : [],
-        side: side || undefined, sort, includeIncompatible: showIncompatible, limit: 20, force,
+        side: (kind === "mod" && side) || undefined, sort, includeIncompatible: showIncompatible, limit: 20, force, kind,
       }, live, prefer, more?.next.modrinth ?? 0, more?.next.curseforge ?? 0);
       if (id !== reqId.current) return;
+      res.hits = res.hits.map((h) => ({ ...h, kind }));
       setPage((prev) => {
         if (!more || !prev) return res;
         const seen = new Set(prev.hits.flatMap((h) => [hitKey(h), ...(h.also ? [`${h.also.source}:${h.also.id}`] : [])]));
@@ -58,7 +69,7 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending, 
       if (!more) setHighlight(0);
     } catch (e) { if (id === reqId.current) setError(e as AppError); }
     finally { if (id === reqId.current) setBusy(false); }
-  }, [q, pack.mcVersion, pack.loader, category, side, sort, showIncompatible, site, prefer]);
+  }, [q, pack.mcVersion, pack.loader, category, side, sort, showIncompatible, site, prefer, kind]);
 
   useEffect(() => { run(null); }, [run]);
 
@@ -83,16 +94,22 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending, 
       </Select></>
     }>
       <div className="pane__fixed stack">
-        <Input ref={searchRef} placeholder="Search mods…  ( / )" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
-          aria-label="Search mods" aria-controls="results" aria-activedescendant={hits[highlight] ? `hit-${highlight}` : undefined} />
+        <Select aria-label="Content type" value={kind} onChange={(e) => setKind(e.target.value as EntryKindT)}>
+          {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+        </Select>
+        {KIND_HINTS[kind] && <div className="muted" style={{ fontSize: 12 }}>{KIND_HINTS[kind]}</div>}
+        <Input ref={searchRef} placeholder={`${KINDS.find((k) => k.id === kind)!.search}  ( / )`} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
+          aria-label={KINDS.find((k) => k.id === kind)!.search.replace("…", "")} aria-controls="results" aria-activedescendant={hits[highlight] ? `hit-${highlight}` : undefined} />
         <div className="filters">
           <Select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">All categories</option>
             {cats.map((c) => <option key={c.name} value={c.name}>{prettyCategory(c.name)}</option>)}
           </Select>
-          <Select aria-label="Side" value={side} onChange={(e) => setSide(e.target.value as typeof side)}>
-            <option value="">Any side</option><option value="client">Works on client</option><option value="server">Works on server</option>
-          </Select>
+          {kind === "mod" && (
+            <Select aria-label="Side" value={side} onChange={(e) => setSide(e.target.value as typeof side)}>
+              <option value="">Any side</option><option value="client">Works on client</option><option value="server">Works on server</option>
+            </Select>
+          )}
           <Select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
             <option value="relevance">Relevance</option><option value="downloads">Downloads</option><option value="follows">Follows</option>
             <option value="updated">Last updated</option><option value="newest">Newest</option>

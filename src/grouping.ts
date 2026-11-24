@@ -11,8 +11,11 @@ export const GROUPINGS: { id: Grouping; label: string }[] = [
 
 // Special group keys (start with "@", which no category/tag/mod name uses here).
 const LIB = "@library", USER = "@user", UNNEEDED = "@unneeded", UNTAGGED = "@untagged";
+const KIND_GROUPS: Record<string, string> = { "@resourcepack": "Resource packs", "@shader": "Shaders", "@datapack": "Datapacks" };
 
 export function groupKey(e: PackEntry, by: Grouping, pack: Pack): string {
+  // Resource packs, shaders and datapacks always sit in their own groups.
+  if (e.kind && e.kind !== "mod") return `@${e.kind}`;
   if (by === "pulledInBy") {
     if (e.reason !== "dependency") return USER;
     const parents = e.pulledInBy.filter((k) => k in pack.entries);
@@ -24,6 +27,7 @@ export function groupKey(e: PackEntry, by: Grouping, pack: Pack): string {
 }
 
 export function groupTitle(g: string, by: Grouping): string {
+  if (g in KIND_GROUPS) return KIND_GROUPS[g];
   if (g === LIB) return "Libraries";
   if (g === USER) return "Added by you";
   if (g === UNNEEDED) return "Dependencies nothing needs";
@@ -40,6 +44,7 @@ export function groupTitle(g: string, by: Grouping): string {
 /** Sort order: "added by you" first; libraries / unneeded / untagged last. */
 export function groupRank(g: string) {
   if (g === USER) return -1;
+  if (g in KIND_GROUPS) return 0.5; // after mods, before libraries
   return g === LIB || g === UNNEEDED || g === UNTAGGED ? 1 : 0;
 }
 

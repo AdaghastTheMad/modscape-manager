@@ -128,7 +128,7 @@ function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: st
     setOpen(true);
     const id = entryCatalogId(e);
     if (versions || !id) return;
-    api.entryVersions(id, pack.mcVersion, pack.loader).then(setVersions, setError);
+    api.entryVersions(id, pack.mcVersion, pack.loader, e.kind).then(setVersions, setError);
   };
   return (
     <div className="stack" style={{ gap: 4 }}>

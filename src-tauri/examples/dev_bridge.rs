@@ -45,7 +45,7 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
                 to_val(st.curseforge.project(id.trim_start_matches("cf:").parse().unwrap_or(0), force).await)
             }
         },
-        "categories" => to_val(st.modrinth.categories(force).await),
+        "categories" => to_val(st.modrinth.categories_for(a.get("kind").and_then(|k| serde_json::from_value(k.clone()).ok()).unwrap_or_default(), force).await),
         "game_versions" => to_val(st.modrinth.game_versions(force).await),
         "loader_versions" => to_val(modpack_planner_lib::loaders::loader_versions(&st.fetcher, arg(a, "loader")?, &arg::<String>(a, "mcVersion")?, force).await),
         "icon" => to_val(st.fetcher.icon_data_url(&arg::<String>(a, "url")?).await),
@@ -68,7 +68,8 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let pin: Option<String> = arg(a, "pinVersion")?;
             let for_key: Option<String> = arg(a, "forKey")?;
             let alt: Option<String> = arg(a, "altId")?;
-            to_val(resolve::plan_add(&pack, &arg::<String>(a, "projectId")?, pin.as_deref(), for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
+            let kind: Option<model::EntryKind> = a.get("kind").and_then(|k| serde_json::from_value(k.clone()).ok());
+            to_val(resolve::plan_add_kind(&pack, &arg::<String>(a, "projectId")?, kind.unwrap_or_default(), pin.as_deref(), for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
         }
         "export_plan" => Ok(serde_json::to_value(st.export_plan(&arg(a, "pack")?, arg(a, "format")?).await).unwrap()),
         // Dev only: write an export / import a file at a path inside test-env/.
@@ -77,7 +78,15 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let path = test_env_path(&arg::<String>(a, "path")?)?;
             let plan = st.export_plan(&pack, arg(a, "format")?).await;
             let overrides = st.templates.export_files(&pack).map_err(|e| serde_json::to_value(e).unwrap())?;
-            to_val(modpack_planner_lib::export::write_archive(&pack, &plan, &overrides, &path).map(|_| path.display().to_string()))
+            use modpack_planner_lib::export::{self, Format};
+            let fmt: Format = arg(a, "format")?;
+            let r = match fmt {
+                Format::Packwiz => export::write_packwiz(&pack, &plan, &overrides, &path),
+                Format::Markdown => std::fs::write(&path, export::list_markdown(&pack, &plan)).map_err(|e| modpack_planner_lib::error::AppError::Storage(e.to_string())),
+                Format::Csv => std::fs::write(&path, export::list_csv(&pack, &plan)).map_err(|e| modpack_planner_lib::error::AppError::Storage(e.to_string())),
+                _ => export::write_archive(&pack, &plan, &overrides, &path),
+            };
+            to_val(r.map(|_| path.display().to_string()))
         }
         "dev_import_from" => to_val(modpack_planner_lib::import_file_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
         "dev_import_instance" => to_val(modpack_planner_lib::import_instance_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
@@ -103,8 +112,9 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
         "entry_versions" => {
             let (mc, loader): (String, _) = (arg(a, "mcVersion")?, arg(a, "loader")?);
-            let vs = st.catalog().versions(&arg::<String>(a, "projectId")?, &mc, loader, false).await.map_err(|e| serde_json::to_value(e).unwrap())?;
-            Ok(serde_json::to_value(resolve::compatible_files(&vs, &mc, loader)).unwrap())
+            let kind: model::EntryKind = a.get("kind").and_then(|k| serde_json::from_value(k.clone()).ok()).unwrap_or_default();
+            let vs = st.catalog().versions_of(&arg::<String>(a, "projectId")?, &mc, loader, kind, false).await.map_err(|e| serde_json::to_value(e).unwrap())?;
+            Ok(serde_json::to_value(resolve::compatible_files_kind(&vs, &mc, loader, kind)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
         // Override templates (library lives in test-env/bridge-templates; source paths are relative to test-env/).

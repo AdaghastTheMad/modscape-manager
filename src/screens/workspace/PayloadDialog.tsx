@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type AppError, type PayloadPlan, type PlanRow } from "../../api";
 import { Button, ErrorNotice, ModIcon, Modal, Notice } from "../../components/kit";
-import type { Pack } from "../../model";
+import { kindLabel, type Pack } from "../../model";
 
 export interface PayloadApply {
   plan: PayloadPlan;
@@ -47,7 +47,6 @@ export function PayloadDialog({ pack, payloadId, onClose, onApply, title }: {
     add: addable.length,
     inPack: plan.rows.filter((r) => r.status === "inPack").length,
     noBuild: plan.rows.filter((r) => r.status === "noBuild").length,
-    notYet: plan.rows.filter((r) => r.status === "notYet").length,
   };
 
   return (
@@ -58,7 +57,7 @@ export function PayloadDialog({ pack, payloadId, onClose, onApply, title }: {
         {plan && counts && (
           <>
             <p className="muted" style={{ margin: 0 }}>
-              {counts.add} to add · {counts.inPack} already in the pack · {counts.noBuild} with no build here{counts.notYet ? ` · ${counts.notYet} waiting for resource-pack support` : ""}.
+              {counts.add} to add · {counts.inPack} already in the pack · {counts.noBuild} with no build here.
               Dependencies are added automatically.
             </p>
             {plan.notes.map((n, i) => <Notice key={i} title={n} />)}
@@ -110,14 +109,14 @@ export function PayloadDialog({ pack, payloadId, onClose, onApply, title }: {
                     {r.status === "add" ? (
                       <input type="checkbox" checked={!unticked.has(k)} aria-label={`Add ${r.name}`}
                         onChange={(e) => { const n = new Set(unticked); if (e.target.checked) n.delete(k); else n.add(k); setUnticked(n); }} />
-                    ) : <span className="plan-row__mark">{r.status === "inPack" ? "✔" : r.status === "notYet" ? "…" : "✖"}</span>}
+                    ) : <span className="plan-row__mark">{r.status === "inPack" ? "✔" : "✖"}</span>}
                     {r.status === "add" && <ModIcon url={r.iconUrl} label={r.name} size={24} />}
                     <span className="grow">
                       <strong>{r.status === "add" ? r.name : r.label}</strong>
                       {r.status === "add" && r.fallback && <span className="muted"> · fallback for {r.label}</span>}
                       {r.status === "inPack" && <span className="muted"> · already in the pack{r.name !== r.label ? ` as ${r.name}` : ""}</span>}
                       {r.status === "noBuild" && <span className="err"> · no build for {pack.mcVersion} (tried {r.tried.join(", ")})</span>}
-                      {r.status === "notYet" && <span className="muted"> · {r.kind} support arrives in milestone 11</span>}
+                      {r.status === "add" && r.kind !== "mod" && <span className="mini-badge">{kindLabel(r.kind)}</span>}
                     </span>
                     {r.from !== plan.name && <span className="muted" style={{ fontSize: 11 }}>from {r.from}</span>}
                   </li>

@@ -10,7 +10,7 @@
 //! why, and fixes. `write_*` turn a plan into the archive.
 
 use crate::error::{AppError, AppResult};
-use crate::model::Pack;
+use crate::model::{EntryKind, Pack};
 use crate::resolve::{self, Catalog, Fix, Severity, Version};
 use crate::sources::{curseforge, Loader, Source};
 use futures::stream::{self, StreamExt};
@@ -25,6 +25,21 @@ pub const MRPACK_HOSTS: &[&str] = &["cdn.modrinth.com", "github.com", "raw.githu
 pub enum Format {
     Mrpack,
     CurseforgeZip,
+    /// packwiz folder: each file from the site it's set to (mixed is fine).
+    Packwiz,
+    /// Mod lists for reading and sharing.
+    Markdown,
+    Csv,
+}
+
+impl Format {
+    /// Formats that take every entry from the site it's set to, instead of one site only.
+    pub fn mixed(self) -> bool {
+        matches!(self, Format::Packwiz | Format::Markdown | Format::Csv)
+    }
+    pub fn is_list(self) -> bool {
+        matches!(self, Format::Markdown | Format::Csv)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +67,7 @@ pub struct ExportFile {
     pub size: u64,
     pub env: Option<Env>,
     pub distribution_blocked: bool,
+    pub kind: EntryKind,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,11 +113,33 @@ fn loader_name(l: Loader) -> &'static str {
 }
 
 /// Forge versions are stored as `1.21.1-52.1.21`; formats want `52.1.21`.
+/// Where a file of this kind goes in the instance. Datapacks go to Paxi's
+/// global folder when the pack has Paxi, else to `datapacks/` (copy them into
+/// each world by hand).
+pub fn folder_for(kind: EntryKind, has_paxi: bool) -> &'static str {
+    match kind {
+        EntryKind::Mod => "mods/",
+        EntryKind::Resourcepack => "resourcepacks/",
+        EntryKind::Shader => "shaderpacks/",
+        EntryKind::Datapack if has_paxi => "config/paxi/datapacks/",
+        EntryKind::Datapack => "datapacks/",
+    }
+}
+
 pub fn plain_loader_version(pack: &Pack) -> String {
     let v = pack.loader_version.trim();
     match pack.loader {
         Loader::Forge => v.strip_prefix(&format!("{}-", pack.mc_version)).unwrap_or(v).to_string(),
         _ => v.to_string(),
+    }
+}
+
+fn packwiz_loader_key(l: Loader) -> &'static str {
+    match l {
+        Loader::Neoforge => "neoforge",
+        Loader::Forge => "forge",
+        Loader::Fabric => "fabric",
+        Loader::Quilt => "quilt",
     }
 }
 
@@ -145,8 +183,8 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
     let mc = pack.mc_version.as_str();
     let loader = pack.loader;
     let want = match format {
-        Format::Mrpack => Source::Modrinth,
         Format::CurseforgeZip => Source::Curseforge,
+        _ => Source::Modrinth,
     };
     let mut files = Vec::new();
     let mut excluded = Vec::new();
@@ -156,11 +194,20 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
 
     let mut todo = Vec::new();
     for (k, e) in &pack.entries {
+        if format == Format::CurseforgeZip && e.kind == EntryKind::Datapack {
+            // A CurseForge manifest lists only ids; the launcher decides where files go, and none put datapacks in Paxi's folder.
+            excluded.push(Excluded {
+                key: k.clone(),
+                name: e.display.name.clone(),
+                reason: "CurseForge zips can't place datapacks (launchers choose the folder). Export a .mrpack, or keep it in an override template.".into(),
+            });
+            continue;
+        }
         let has_want = match want {
             Source::Modrinth => e.mod_ref.modrinth_id.is_some(),
             Source::Curseforge => e.mod_ref.curseforge_id.is_some(),
         };
-        if e.mod_ref.preferred != want {
+        if !format.mixed() && e.mod_ref.preferred != want {
             if has_want {
                 switchable.push(Fix::UseSource { key: k.clone(), source: want });
             } else {
@@ -175,18 +222,18 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
             continue;
         }
         if let Some((pid, pin)) = resolve::target(e) {
-            todo.push((k.clone(), pid, pin));
+            todo.push((k.clone(), pid, pin, e.kind));
         }
     }
 
     let picked: Vec<(String, String, AppResult<Option<Version>>)> = stream::iter(todo)
-        .map(|(k, pid, pin)| async move {
+        .map(|(k, pid, pin, kind)| async move {
             let r = async {
                 if let Some(vid) = &pin {
                     return cat.version(vid, false).await;
                 }
-                let vs = cat.versions(&pid, mc, loader, false).await?;
-                Ok(resolve::select_version(&vs, mc, loader, pack.channel_policy))
+                let vs = cat.versions_of(&pid, mc, loader, kind, false).await?;
+                Ok(resolve::select_version_kind(&vs, mc, loader, kind, pack.channel_policy).map(|x| x.0))
             }
             .await;
             (k, pid, r)
@@ -196,13 +243,18 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
         .await;
 
     let mut failed = 0;
+    let has_paxi = resolve::has_project(pack, resolve::PAXI, &["paxi"]);
     for (k, pid, r) in picked {
         let e = &pack.entries[&k];
         let name = e.display.name.clone();
         let v = match r {
             Ok(Some(v)) => v,
             Ok(None) => {
-                excluded.push(Excluded { key: k, name, reason: format!("No file for Minecraft {mc} · {}.", loader_name(loader)) });
+                excluded.push(Excluded {
+                    key: k,
+                    name,
+                    reason: if e.kind == EntryKind::Mod { format!("No file for Minecraft {mc} · {}.", loader_name(loader)) } else { format!("No {} file for Minecraft {mc}.", resolve::kind_label(e.kind)) },
+                });
                 continue;
             }
             Err(err) => {
@@ -214,19 +266,29 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
         let f = v.main_file().cloned().unwrap_or_default();
         let sha1 = f.hashes.get("sha1").cloned();
         let sha512 = f.hashes.get("sha512").cloned();
+        let source = if format.mixed() { e.mod_ref.preferred } else { want };
         if format == Format::Mrpack {
             if sha1.is_none() || sha512.is_none() || !host_ok(&f.url) {
                 excluded.push(Excluded { key: k, name, reason: "Modrinth didn't give a usable download URL and hashes for this file.".into() });
                 continue;
             }
         }
+        if format == Format::Packwiz && sha1.is_none() && sha512.is_none() {
+            excluded.push(Excluded { key: k, name, reason: "The site gave no hash for this file, which packwiz needs.".into() });
+            continue;
+        }
         let env = Some(export_env(e.display.server_side.as_deref()));
         files.push(ExportFile {
             key: k,
             name,
-            source: want,
+            source,
+            kind: e.kind,
             // CurseForge manifests only need ids, so a missing file name is fine there.
-            path: format!("mods/{}", if f.filename.is_empty() { format!("{}.jar", v.version_number) } else { f.filename.replace(['/', '\\'], "_") }),
+            path: format!(
+                "{}{}",
+                folder_for(e.kind, has_paxi),
+                if f.filename.is_empty() { format!("{}.{}", v.version_number, if e.kind == EntryKind::Mod { "jar" } else { "zip" }) } else { f.filename.replace(['/', '\\'], "_") }
+            ),
             project_id: pid.strip_prefix(curseforge::PREFIX).unwrap_or(&pid).to_string(),
             file_id: v.id.strip_prefix(curseforge::PREFIX).unwrap_or(&v.id).to_string(),
             version_number: v.version_number.clone(),
@@ -255,7 +317,7 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
     }
 
     let (here, there) = if want == Source::Modrinth { ("Modrinth", "CurseForge") } else { ("CurseForge", "Modrinth") };
-    if pack.loader_version.trim().is_empty() {
+    if pack.loader_version.trim().is_empty() && !format.is_list() {
         problems.push(Problem {
             severity: Severity::Error,
             message: format!("The pack has no {} version set. Launchers need it to install the loader.", loader_name(loader)),
@@ -278,14 +340,14 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
                 "{one_site} mod{} only linked on {there} and won't be in this {}. Try \"Match sites\" to find {here} copies{}.",
                 if one_site == 1 { " is" } else { "s are" },
                 if format == Format::Mrpack { ".mrpack" } else { "CurseForge zip" },
-                if format == Format::Mrpack { ", or export a CurseForge zip instead" } else { ", or export an .mrpack instead" }
+                if format == Format::Mrpack { ", or export a CurseForge zip (or packwiz, which mixes sites) instead" } else { ", or export an .mrpack (or packwiz) instead" }
             ),
             fixes: vec![],
             fix_label: None,
         });
     }
     let blocked = files.iter().filter(|f| f.distribution_blocked).count();
-    if blocked > 0 {
+    if blocked > 0 && !format.is_list() {
         problems.push(Problem {
             severity: Severity::Warning,
             message: format!("{blocked} mod{} block third-party downloads; Prism will ask you to download {} by hand.", if blocked == 1 { "" } else { "s" }, if blocked == 1 { "it" } else { "them" }),
@@ -307,8 +369,9 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
     problems.sort_by(|a, b| a.severity.cmp(&b.severity));
     let can_export = !problems.iter().any(|p| p.severity == Severity::Error);
     let loader_label = match format {
-        Format::Mrpack => format!("{} {}", mrpack_loader_key(loader), plain_loader_version(pack)),
         Format::CurseforgeZip => cf_loader_id(pack),
+        Format::Packwiz => format!("{} {}", packwiz_loader_key(loader), plain_loader_version(pack)),
+        _ => format!("{} {}", mrpack_loader_key(loader), plain_loader_version(pack)),
     };
     ExportPlan { format, files, excluded, problems, loader_label, can_export, overrides: 0 }
 }
@@ -458,6 +521,9 @@ pub fn write_archive(pack: &Pack, plan: &ExportPlan, overrides: &[(String, std::
             z.start_file("modrinth.index.json", zip_opts()).map_err(zerr)?;
             z.write_all(json.as_bytes()).map_err(io)?;
         }
+        Format::Packwiz | Format::Markdown | Format::Csv => {
+            return Err(AppError::Invalid("That format isn't an archive.".into()));
+        }
         Format::CurseforgeZip => {
             let json = cf_manifest_json(pack, plan)?;
             z.start_file("manifest.json", zip_opts()).map_err(zerr)?;
@@ -487,6 +553,215 @@ pub fn write_archive(pack: &Pack, plan: &ExportPlan, overrides: &[(String, std::
     Ok(())
 }
 
+// ---------------------------------------------------------------- packwiz (M11)
+fn toml_str(s: &str) -> String {
+    toml::Value::String(s.to_string()).to_string()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A safe, unique metafile stem from a slug or name.
+fn stem(raw: &str, used: &mut std::collections::HashSet<String>) -> String {
+    let mut base: String = raw.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+    base = base.trim_matches('-').to_string();
+    if base.is_empty() {
+        base = "file".into();
+    }
+    let mut s = base.clone();
+    let mut n = 2;
+    while !used.insert(s.clone()) {
+        s = format!("{base}-{n}");
+        n += 1;
+    }
+    s
+}
+
+/// The files of a packwiz pack, as (path, contents): `pack.toml`, `index.toml`,
+/// one `.pw.toml` per file (in the folder the file installs to), and the
+/// override templates' files at the pack root.
+pub fn packwiz_files(pack: &Pack, plan: &ExportPlan, overrides: &[(String, std::path::PathBuf)]) -> AppResult<Vec<(String, Vec<u8>)>> {
+    let mut out: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut used = std::collections::HashSet::new();
+    let mut index: Vec<(String, String, bool)> = Vec::new();
+    for f in &plan.files {
+        let e = pack.entries.get(&f.key);
+        let slug = e.map(|e| if e.display.slug.is_empty() { e.display.name.clone() } else { e.display.slug.clone() }).unwrap_or_else(|| f.name.clone());
+        let folder = f.path.rsplit_once('/').map(|(d, _)| d).unwrap_or("mods");
+        let filename = f.path.rsplit('/').next().unwrap_or(&f.path);
+        let side = f.env.as_ref().map(|e| if e.server == "unsupported" { "client" } else { "both" }).unwrap_or("both");
+        let mut t = format!("name = {}\nfilename = {}\nside = {}\n\n[download]\n", toml_str(&f.name), toml_str(filename), toml_str(side));
+        match f.source {
+            Source::Modrinth => {
+                let (fmt, h) = match (&f.sha512, &f.sha1) {
+                    (Some(h), _) => ("sha512", h),
+                    (None, Some(h)) => ("sha1", h),
+                    _ => continue,
+                };
+                t.push_str(&format!("url = {}\nhash-format = \"{fmt}\"\nhash = {}\n\n[update]\n[update.modrinth]\nmod-id = {}\nversion = {}\n", toml_str(&f.url), toml_str(h), toml_str(&f.project_id), toml_str(&f.file_id)));
+            }
+            Source::Curseforge => {
+                let Some(h) = &f.sha1 else { continue };
+                t.push_str(&format!(
+                    "hash-format = \"sha1\"\nhash = {}\nmode = \"metadata:curseforge\"\n\n[update]\n[update.curseforge]\nfile-id = {}\nproject-id = {}\n",
+                    toml_str(h),
+                    f.file_id.parse::<u64>().unwrap_or(0),
+                    f.project_id.parse::<u64>().unwrap_or(0)
+                ));
+            }
+        }
+        let path = format!("{folder}/{}.pw.toml", stem(&slug, &mut used));
+        index.push((path.clone(), sha256_hex(t.as_bytes()), true));
+        out.push((path, t.into_bytes()));
+    }
+    for (rel, src) in overrides {
+        let rel = crate::templates::clean_rel(rel)?;
+        if rel == "pack.toml" || rel == "index.toml" {
+            continue; // packwiz's own files win
+        }
+        let bytes = std::fs::read(src).map_err(|e| AppError::Storage(format!("Couldn't read {rel}: {e}")))?;
+        index.push((rel.clone(), sha256_hex(&bytes), false));
+        out.push((rel, bytes));
+    }
+    index.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut idx = String::from("hash-format = \"sha256\"\n");
+    for (file, hash, meta) in &index {
+        idx.push_str(&format!("\n[[files]]\nfile = {}\nhash = {}\n{}", toml_str(file), toml_str(hash), if *meta { "metafile = true\n" } else { "" }));
+    }
+    let lv = plain_loader_version(pack);
+    let packtoml = format!(
+        "name = {}\nauthor = \"\"\nversion = \"1.0.0\"\npack-format = \"packwiz:1.1.0\"\n\n[index]\nfile = \"index.toml\"\nhash-format = \"sha256\"\nhash = {}\n\n[versions]\nminecraft = {}\n{} = {}\n",
+        toml_str(&pack.name),
+        toml_str(&sha256_hex(idx.as_bytes())),
+        toml_str(&pack.mc_version),
+        packwiz_loader_key(pack.loader),
+        toml_str(&lv)
+    );
+    out.push(("index.toml".into(), idx.into_bytes()));
+    out.push(("pack.toml".into(), packtoml.into_bytes()));
+    Ok(out)
+}
+
+/// Writes a packwiz pack into `dir`, which must not exist yet (or be empty).
+pub fn write_packwiz(pack: &Pack, plan: &ExportPlan, overrides: &[(String, std::path::PathBuf)], dir: &std::path::Path) -> AppResult<()> {
+    let io = |e: std::io::Error| AppError::Storage(format!("Couldn't write the folder: {e}"));
+    if dir.exists() && std::fs::read_dir(dir).map_err(io)?.next().is_some() {
+        return Err(AppError::Invalid(format!("{} isn't empty; pick an empty or new folder.", dir.display())));
+    }
+    for (rel, bytes) in packwiz_files(pack, plan, overrides)? {
+        let rel = crate::templates::clean_rel(&rel)?;
+        let p = dir.join(&rel);
+        std::fs::create_dir_all(p.parent().unwrap()).map_err(io)?;
+        std::fs::write(p, bytes).map_err(io)?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------- mod lists (M11)
+fn page_url(f: &ExportFile, slug: &str) -> String {
+    let id = if slug.is_empty() { f.project_id.as_str() } else { slug };
+    match f.source {
+        Source::Modrinth => format!(
+            "https://modrinth.com/{}/{id}",
+            match f.kind {
+                EntryKind::Mod => "mod",
+                EntryKind::Resourcepack => "resourcepack",
+                EntryKind::Shader => "shader",
+                EntryKind::Datapack => "datapack",
+            }
+        ),
+        Source::Curseforge => format!(
+            "https://www.curseforge.com/minecraft/{}/{id}",
+            match f.kind {
+                EntryKind::Mod => "mc-mods",
+                EntryKind::Resourcepack => "texture-packs",
+                EntryKind::Shader => "shaders",
+                EntryKind::Datapack => "data-packs",
+            }
+        ),
+    }
+}
+
+struct Row {
+    name: String,
+    kind: &'static str,
+    source: &'static str,
+    version: String,
+    link: String,
+    category: String,
+    reason: &'static str,
+}
+
+fn rows(pack: &Pack, plan: &ExportPlan) -> Vec<Row> {
+    plan.files
+        .iter()
+        .map(|f| {
+            let e = pack.entries.get(&f.key);
+            Row {
+                name: f.name.clone(),
+                kind: resolve::kind_label(f.kind),
+                source: if f.source == Source::Modrinth { "Modrinth" } else { "CurseForge" },
+                version: f.version_number.clone(),
+                link: page_url(f, e.map(|e| e.display.slug.as_str()).unwrap_or("")),
+                category: e.and_then(|e| e.display.categories.iter().find(|c| *c != "library").cloned()).unwrap_or_default(),
+                reason: match e.map(|e| e.reason) {
+                    Some(crate::model::Reason::Dependency) => "dependency",
+                    Some(crate::model::Reason::Payload) => "payload",
+                    _ => "added",
+                },
+            }
+        })
+        .collect()
+}
+
+/// A Markdown mod list: a table per content kind, your picks before dependencies.
+pub fn list_markdown(pack: &Pack, plan: &ExportPlan) -> String {
+    let esc = |s: &str| s.replace('|', "\\|").replace('\n', " ");
+    let mut out = format!("# {}\n\nMinecraft {} · {} {}\n", esc(&pack.name), pack.mc_version, loader_name(pack.loader), plain_loader_version(pack));
+    let mut rows = rows(pack, plan);
+    rows.sort_by(|a, b| (a.reason == "dependency").cmp(&(b.reason == "dependency")).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    for (kind, title) in [("mod", "Mods"), ("resource pack", "Resource packs"), ("shader", "Shaders"), ("datapack", "Datapacks")] {
+        let rs: Vec<&Row> = rows.iter().filter(|r| r.kind == kind).collect();
+        if rs.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("\n## {title} ({})\n\n| Name | Version | Source | Category | |\n|---|---|---|---|---|\n", rs.len()));
+        for r in rs {
+            out.push_str(&format!(
+                "| [{}]({}) | {} | {} | {} | {} |\n",
+                esc(&r.name),
+                r.link,
+                esc(&r.version),
+                r.source,
+                esc(&r.category),
+                if r.reason == "dependency" { "dependency" } else { "" }
+            ));
+        }
+    }
+    if !plan.excluded.is_empty() {
+        out.push_str(&format!("\n## Not included ({})\n\n", plan.excluded.len()));
+        for x in &plan.excluded {
+            out.push_str(&format!("- {}: {}\n", esc(&x.name), esc(&x.reason)));
+        }
+    }
+    out
+}
+
+/// CSV: name, type, version, source, link, category, why it's in the pack.
+pub fn list_csv(pack: &Pack, plan: &ExportPlan) -> String {
+    let q = |s: &str| if s.contains([',', '"', '\n']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let mut out = String::from("name,type,version,source,link,category,reason\n");
+    let mut rows = rows(pack, plan);
+    rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    for r in rows {
+        out.push_str(&[q(&r.name), q(r.kind), q(&r.version), q(r.source), q(&r.link), q(&r.category), q(r.reason)].join(","));
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,6 +781,65 @@ mod tests {
         block(add(f, &mut pack, "sodium-extra", &mut keys));
         block(add(f, &mut pack, "modmenu", &mut keys));
         pack
+    }
+
+    #[test]
+    fn other_content_goes_to_its_own_folder() {
+        use crate::resolve::{plan_add_kind, tests::{apply, counter, KindCat}};
+        let c = KindCat::new();
+        let mut pack = pack_for("1.21.1", Loader::Fabric);
+        pack.loader_version = "0.20.1".into();
+        let mut keys = counter();
+        for (pid, kind) in [("rpFresh", EntryKind::Resourcepack), ("shComp", EntryKind::Shader), ("dpTerra", EntryKind::Datapack)] {
+            let plan = block(plan_add_kind(&pack, pid, kind, None, None, None, &c, false, "t", &mut keys)).unwrap();
+            apply(&mut pack, plan);
+        }
+        let plan = block(plan_export(&pack, &c, Format::Mrpack));
+        let paths: Vec<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
+        for want in ["resourcepacks/rpNew.zip", "shaderpacks/shExact.zip", "config/paxi/datapacks/dpZip.zip", "mods/paxiF.zip"] {
+            assert!(paths.contains(&want), "{want} not in {paths:?}");
+        }
+        // CurseForge zips can't place datapacks.
+        let cf = block(plan_export(&pack, &c, Format::CurseforgeZip));
+        assert!(cf.excluded.iter().any(|x| x.name == "Terralith" && x.reason.contains("datapacks")), "{:?}", cf.excluded);
+    }
+
+    #[test]
+    fn packwiz_and_lists() {
+        use crate::resolve::{plan_add_kind, tests::{apply, counter, KindCat}};
+        let c = KindCat::new();
+        let mut pack = pack_for("1.21.1", Loader::Fabric);
+        pack.loader_version = "0.20.1".into();
+        let mut keys = counter();
+        for (pid, kind) in [("rpFresh", EntryKind::Resourcepack), ("dpTerra", EntryKind::Datapack)] {
+            let plan = block(plan_add_kind(&pack, pid, kind, None, None, None, &c, false, "t", &mut keys)).unwrap();
+            apply(&mut pack, plan);
+        }
+        let plan = block(plan_export(&pack, &c, Format::Packwiz));
+        assert!(plan.can_export, "{:?}", plan.problems);
+        let cfg = tmp("cfg.json");
+        std::fs::write(&cfg, "{}").unwrap();
+        let files: std::collections::HashMap<String, Vec<u8>> = packwiz_files(&pack, &plan, &[("config/x.json".into(), cfg)]).unwrap().into_iter().collect();
+        let text = |p: &str| String::from_utf8(files[p].clone()).unwrap();
+        let rp = text("resourcepacks/fresh-animations.pw.toml").parse::<toml::Table>().unwrap();
+        assert_eq!(rp["filename"].as_str(), Some("rpNew.zip"));
+        assert_eq!(rp["update"]["modrinth"]["mod-id"].as_str(), Some("rpFresh"));
+        assert!(files.contains_key("config/paxi/datapacks/terralith.pw.toml"));
+        assert!(files.contains_key("mods/paxi.pw.toml"));
+        // pack.toml → index.toml → each file: the hashes chain.
+        let packt = text("pack.toml").parse::<toml::Table>().unwrap();
+        assert_eq!(packt["index"]["hash"].as_str().unwrap(), sha256_hex(&files["index.toml"]));
+        assert_eq!(packt["versions"]["fabric"].as_str(), Some("0.20.1"));
+        let idx = text("index.toml").parse::<toml::Table>().unwrap();
+        for f in idx["files"].as_array().unwrap() {
+            let p = f["file"].as_str().unwrap();
+            assert_eq!(f["hash"].as_str().unwrap(), sha256_hex(&files[p]), "{p}");
+            assert_eq!(f.get("metafile").and_then(|m| m.as_bool()).unwrap_or(false), p.ends_with(".pw.toml"));
+        }
+        let md = list_markdown(&pack, &block(plan_export(&pack, &c, Format::Markdown)));
+        assert!(md.contains("## Resource packs (1)") && md.contains("[Fresh Animations](https://modrinth.com/resourcepack/fresh animations)"), "{md}");
+        let csv = list_csv(&pack, &block(plan_export(&pack, &c, Format::Csv)));
+        assert!(csv.starts_with("name,type,version,source,link,category,reason\n") && csv.contains("Paxi,mod,paxiF,Modrinth"), "{csv}");
     }
 
     #[test]

@@ -56,12 +56,18 @@ struct Hit {
 
 /// Search facets: AND across groups, OR within a group.
 pub fn facets(q: &SearchQuery) -> String {
-    let mut groups: Vec<Vec<String>> = vec![vec!["project_type:mod".into()]];
+    let ty = match q.kind {
+        crate::model::EntryKind::Mod => "mod",
+        crate::model::EntryKind::Resourcepack => "resourcepack",
+        crate::model::EntryKind::Shader => "shader",
+        crate::model::EntryKind::Datapack => "datapack",
+    };
+    let mut groups: Vec<Vec<String>> = vec![vec![format!("project_type:{ty}")]];
     if !q.include_incompatible {
         if let Some(v) = &q.game_version {
             groups.push(vec![format!("versions:{v}")]);
         }
-        if let Some(l) = q.loader {
+        if let Some(l) = q.mod_loader() {
             groups.push(l.accepts().iter().map(|s| format!("categories:{s}")).collect());
         }
     }
@@ -101,7 +107,7 @@ fn parse(body: Resp, q: &SearchQuery, freshness: Freshness) -> SearchPage {
         .into_iter()
         .map(|h| {
             let all_cats: Vec<String> = h.categories.iter().chain(h.display_categories.iter()).cloned().collect();
-            let compatible = is_compatible(&h.versions, &all_cats, q.game_version.as_deref(), q.loader);
+            let compatible = is_compatible(&h.versions, &all_cats, q.game_version.as_deref(), q.mod_loader());
             let mut cats: Vec<String> = all_cats.into_iter().filter(|c| !LOADER_SLUGS.contains(&c.as_str())).collect();
             cats.sort();
             cats.dedup();
@@ -261,11 +267,22 @@ impl Modrinth {
     }
 
     pub async fn categories(&self, force: bool) -> AppResult<Vec<Category>> {
+        self.categories_for(crate::model::EntryKind::Mod, force).await
+    }
+
+    /// Categories for one content kind (datapacks use Modrinth's mod categories).
+    pub async fn categories_for(&self, kind: crate::model::EntryKind, force: bool) -> AppResult<Vec<Category>> {
+        use crate::model::EntryKind::*;
+        let ty = match kind {
+            Mod | Datapack => "mod",
+            Resourcepack => "resourcepack",
+            Shader => "shader",
+        };
         let req = self.fetcher.http().get(format!("{BASE}/v2/tag/category"));
         let (all, _) = self.fetcher.fetch_json::<Vec<CategoryWire>>(req, 7 * DAY, force, NAME, status_help(NAME)).await?;
         let mut out: Vec<Category> = all
             .into_iter()
-            .filter(|c| c.project_type == "mod" && c.header == "categories")
+            .filter(|c| c.project_type == ty && (c.header == "categories" || kind != Mod && kind != Datapack))
             .map(|c| Category { name: c.name, icon_svg: c.icon })
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -385,6 +402,24 @@ impl Catalog for Modrinth {
             .http()
             .get(format!("{BASE}/v2/project/{}/version", urlencode_segment(project_id)))
             .query(&[("loaders", loaders), ("game_versions", games), ("include_changelog", "false".into())]);
+        match self.fetcher.fetch_json::<Vec<Version>>(req, DAY, force, NAME, status_help(NAME)).await {
+            Ok((v, _)) => Ok(v),
+            Err(AppError::Api { status: 404, .. }) => Ok(vec![]),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: crate::model::EntryKind, force: bool) -> AppResult<Vec<Version>> {
+        if kind == crate::model::EntryKind::Mod {
+            return self.versions(project_id, mc, loader, force).await;
+        }
+        let loaders = serde_json::to_string(crate::resolve::kind_loaders(kind, loader)).expect("loaders");
+        let mut q = vec![("loaders", loaders), ("include_changelog", "false".into())];
+        // Resource packs and shaders may fall back to another version's build, so fetch them all.
+        if !crate::resolve::kind_may_fall_back(kind) {
+            q.push(("game_versions", serde_json::to_string(&[mc]).expect("games")));
+        }
+        let req = self.fetcher.http().get(format!("{BASE}/v2/project/{}/version", urlencode_segment(project_id))).query(&q);
         match self.fetcher.fetch_json::<Vec<Version>>(req, DAY, force, NAME, status_help(NAME)).await {
             Ok((v, _)) => Ok(v),
             Err(AppError::Api { status: 404, .. }) => Ok(vec![]),
