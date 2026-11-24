@@ -55,7 +55,8 @@ export interface Pack {
   choices: Record<string, unknown>;
   appliedPayloads: { id: string; version: number }[];
   overrideTemplates: string[];
-  appliedTemplates: { id: string; version: number }[];
+  /** Templates: `files` holds the hashes as of the last review, to list what changed. */
+  appliedTemplates: AppliedTemplate[];
   snapshots: unknown[];
   dismissedSuggestions: string[];
   /** Also check CurseForge copies' required deps (extra API calls; off by default). */
@@ -188,3 +189,6 @@ export function syncPulledInBy(p: Pack, a: Analysis): Pack | null {
 }
 
 export const entryName = (p: Pack, k: string) => p.entries[k]?.display.name ?? "a removed mod";
+
+/** A pack's record of an override template: the version (and file hashes) it last reviewed. */
+export interface AppliedTemplate { id: string; version: number; files?: Record<string, string> }

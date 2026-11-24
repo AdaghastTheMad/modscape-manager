@@ -83,6 +83,8 @@ pub struct ExportPlan {
     pub loader_label: String,
     /// False when something blocks writing a usable pack.
     pub can_export: bool,
+    /// Files override templates put in `overrides/` (filled in by `add_overrides`).
+    pub overrides: usize,
 }
 
 fn loader_name(l: Loader) -> &'static str {
@@ -308,7 +310,7 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
         Format::Mrpack => format!("{} {}", mrpack_loader_key(loader), plain_loader_version(pack)),
         Format::CurseforgeZip => cf_loader_id(pack),
     };
-    ExportPlan { format, files, excluded, problems, loader_label, can_export }
+    ExportPlan { format, files, excluded, problems, loader_label, can_export, overrides: 0 }
 }
 
 fn version_label(pack: &Pack) -> String {
@@ -402,9 +404,49 @@ fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
-/// Writes the archive for `plan`. The empty `overrides/` folder is where
-/// override templates will go (milestone 9).
-pub fn write_archive(pack: &Pack, plan: &ExportPlan, out: &std::path::Path) -> AppResult<()> {
+/// Adds the override-template checks to a plan: missing templates, ones
+/// changed since the pack last reviewed them, and what goes in `overrides/`.
+pub fn add_overrides(plan: &mut ExportPlan, pack: &Pack, lib: &crate::templates::Library, now: &str) {
+    if pack.override_templates.is_empty() {
+        return;
+    }
+    let warn = |message: String| Problem { severity: Severity::Warning, message, fixes: vec![], fix_label: None };
+    match lib.overview(pack, now) {
+        Ok(o) => {
+            for _ in &o.missing {
+                plan.problems.push(warn("An override template attached to this pack no longer exists. Detach it on the Overrides tab.".into()));
+            }
+            for u in &o.updates {
+                plan.problems.push(warn(format!(
+                    "Template {} changed since you reviewed it (v{} → v{}). The export uses its current files; review the changes on the Overrides tab.",
+                    u.name, u.from_version, u.to_version
+                )));
+            }
+            plan.overrides = o.merged.len();
+            plan.problems.push(Problem {
+                severity: Severity::Info,
+                message: format!(
+                    "{} file{} from {} template{} go into overrides/{}.",
+                    o.merged.len(),
+                    if o.merged.len() == 1 { "" } else { "s" },
+                    o.attached.len(),
+                    if o.attached.len() == 1 { "" } else { "s" },
+                    if o.clashes > 0 { format!(" ({} clash{}: the template lower in the list wins)", o.clashes, if o.clashes == 1 { "" } else { "es" }) } else { String::new() }
+                ),
+                fixes: vec![],
+                fix_label: None,
+            });
+        }
+        Err(e) => {
+            plan.problems.push(Problem { severity: Severity::Error, message: format!("Couldn't read the override templates: {e}"), fixes: vec![], fix_label: None });
+            plan.can_export = false;
+        }
+    }
+}
+
+/// Writes the archive for `plan`, with `overrides` (path in `overrides/`,
+/// file on disk) from the pack's override templates.
+pub fn write_archive(pack: &Pack, plan: &ExportPlan, overrides: &[(String, std::path::PathBuf)], out: &std::path::Path) -> AppResult<()> {
     let io = |e: std::io::Error| AppError::Storage(format!("Couldn't write the file: {e}"));
     let zerr = |e: zip::result::ZipError| AppError::Storage(format!("Couldn't write the archive: {e}"));
     let tmp = out.with_extension("partial");
@@ -434,6 +476,12 @@ pub fn write_archive(pack: &Pack, plan: &ExportPlan, out: &std::path::Path) -> A
         }
     }
     z.add_directory("overrides/", zip_opts()).map_err(zerr)?;
+    for (rel, src) in overrides {
+        let rel = crate::templates::clean_rel(rel)?;
+        z.start_file(format!("overrides/{rel}"), zip_opts()).map_err(zerr)?;
+        let mut f = std::fs::File::open(src).map_err(io)?;
+        std::io::copy(&mut f, &mut z).map_err(io)?;
+    }
     z.finish().map_err(zerr)?;
     std::fs::rename(&tmp, out).map_err(io)?;
     Ok(())
@@ -461,6 +509,22 @@ mod tests {
     }
 
     #[test]
+    fn override_files_land_in_overrides() {
+        let f = Fixture::load();
+        let pack = fabric_pack(&f);
+        let plan = block(plan_export(&pack, &f, Format::Mrpack));
+        let out = tmp("o.mrpack");
+        let src = out.with_file_name("a.json");
+        std::fs::write(&src, "{\"x\":1}").unwrap();
+        write_archive(&pack, &plan, &[("config/a.json".into(), src)], &out).unwrap();
+        let mut z = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+        let mut s = String::new();
+        std::io::Read::read_to_string(&mut z.by_name("overrides/config/a.json").unwrap(), &mut s).unwrap();
+        assert_eq!(s, "{\"x\":1}");
+        assert!(write_archive(&pack, &plan, &[("../evil".into(), out.clone())], &out.with_file_name("b.mrpack")).is_err());
+    }
+
+    #[test]
     fn mrpack_plan_index_and_roundtrip() {
         let f = Fixture::load();
         let pack = fabric_pack(&f);
@@ -479,7 +543,7 @@ mod tests {
 
         // Write, then import it back: same projects, pinned to the same files.
         let out = tmp("pack.mrpack");
-        write_archive(&pack, &plan, &out).unwrap();
+        write_archive(&pack, &plan, &[], &out).unwrap();
         let back = block(import::import_mrpack(&std::fs::read(&out).unwrap(), &f)).unwrap();
         assert!(back.unknown.is_empty(), "{:?}", back.unknown);
         assert_eq!((back.pack.mc_version.as_str(), back.pack.loader, back.pack.loader_version.as_str()), ("1.21.1", Loader::Fabric, "0.20.1"));

@@ -1,7 +1,7 @@
 // Typed wrappers over the Rust core's Tauri commands. The webview makes no
 // network calls of its own; everything goes through here.
 import { invoke } from "@tauri-apps/api/core";
-import type { Pack, PackEntry, PackSummary } from "./model";
+import type { AppliedTemplate, Pack, PackEntry, PackSummary } from "./model";
 
 export type Source = "modrinth" | "curseforge";
 export type Loader = "neoforge" | "fabric" | "forge" | "quilt";
@@ -102,8 +102,22 @@ export type ExportFormat = "mrpack" | "curseforgeZip";
 export interface ExportFile { key: string; name: string; source: Source; path: string; projectId: string; fileId: string; versionNumber: string; url: string; size: number; distributionBlocked: boolean }
 export interface Excluded { key: string; name: string; reason: string }
 export interface ExportProblem { severity: Severity; message: string; fixes: Fix[]; fixLabel?: string | null }
-export interface ExportPlan { format: ExportFormat; files: ExportFile[]; excluded: Excluded[]; problems: ExportProblem[]; loaderLabel: string; canExport: boolean }
-export interface ImportReport { pack: Pack; notes: string[]; unknown: string[]; hasOverrides: boolean }
+export interface ExportPlan { format: ExportFormat; files: ExportFile[]; excluded: Excluded[]; problems: ExportProblem[]; loaderLabel: string; canExport: boolean; overrides: number }
+
+// ---------- override templates (M9) ----------
+export interface TemplateFile { path: string; size: number; editable: boolean; modHint: string | null }
+export interface Template {
+  id: string; name: string; description: string; version: number; createdAt: string; updatedAt: string;
+  files: TemplateFile[]; folders: string[]; bytes: number; folder: string;
+}
+export interface FileText { path: string; size: number; text: string | null }
+export interface SourceEntry { name: string; isDir: boolean; files: number; bytes: number; suggested: boolean }
+export interface SourceScan { kind: "folder" | "instance" | "mrpack" | "curseforge"; path: string; suggestedName: string; entries: SourceEntry[]; notes: string[] }
+export interface MergedFile { path: string; from: string[]; size: number }
+export interface TemplateChange { id: string; name: string; fromVersion: number; toVersion: number; added: string[]; changed: string[]; removed: string[] }
+export interface ModUse { hint: string; entry: string | null; entryName: string | null; files: string[] }
+export interface Overview { attached: Template[]; missing: string[]; merged: MergedFile[]; clashes: number; updates: TemplateChange[]; mods: ModUse[] }
+export interface ImportReport { pack: Pack; notes: string[]; unknown: string[]; hasOverrides: boolean; overrideSource: SourceScan | null }
 
 // ---- duplicate to another version ----
 export interface PortTarget { mcVersion: string; loader: Loader; loaderVersion: string; name?: string; keepMissing: boolean; keep: string[] }
@@ -196,4 +210,20 @@ export const api = {
   cacheStats: () => call<CacheStats>("cache_stats"),
   clearCache: () => call<CacheStats>("clear_cache"),
   openExternal: (url: string) => call<void>("open_external", { url }),
+  listTemplates: () => call<Template[]>("list_templates"),
+  createTemplate: (name: string) => call<Template>("create_template", { name }),
+  setTemplateMeta: (id: string, name: string, description: string) => call<Template>("set_template_meta", { id, name, description }),
+  duplicateTemplate: (id: string) => call<Template>("duplicate_template", { id }),
+  deleteTemplate: (id: string) => call<void>("delete_template", { id }),
+  readTemplateFile: (id: string, path: string) => call<FileText>("read_template_file", { id, path }),
+  writeTemplateFile: (id: string, path: string, text: string) => call<Template>("write_template_file", { id, path, text }),
+  deleteTemplateFile: (id: string, path: string) => call<Template>("delete_template_file", { id, path }),
+  renameTemplateFile: (id: string, from: string, to: string) => call<Template>("rename_template_file", { id, from, to }),
+  addTemplateFiles: (id: string, dir: string) => call<Template | null>("add_template_files", { id, dir }),
+  openTemplatePath: (id: string, path?: string) => call<void>("open_template_path", { id, path: path ?? null }),
+  pickTemplateSource: (folder: boolean) => call<SourceScan | null>("pick_template_source", { folder }),
+  importTemplate: (path: string, name: string, keep: string[]) => call<Template>("import_template", { path, name, keep }),
+  templateOverview: (pack: Pack) => call<Overview>("template_overview", { pack }),
+  templateAppliedRef: (id: string) => call<AppliedTemplate>("template_applied_ref", { id }),
+  templateUses: () => call<Record<string, string[]>>("template_uses"),
 };

@@ -131,6 +131,9 @@ pub struct PackEntry {
 pub struct AppliedRef {
     pub id: String,
     pub version: u32,
+    /// Templates only: file hashes as of the last review, to list what changed.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub files: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -42,7 +42,7 @@ fn main() {
         std::fs::write(packs_dir.join(format!("{file}.planner.json")), json).unwrap();
         let plan = tauri::async_runtime::block_on(export::plan_export(&pack, &st.catalog(), export::Format::Mrpack));
         let out = exports.join(format!("{file}.mrpack"));
-        match export::write_archive(&pack, &plan, &out) {
+        match export::write_archive(&pack, &plan, &[], &out) {
             Ok(()) => println!("{name}: {} mods → {} (excluded {})", pack.entries.len(), out.display(), plan.excluded.len()),
             Err(e) => println!("{name}: export failed: {e} {:?}", plan.problems.iter().map(|p| &p.message).collect::<Vec<_>>()),
         }

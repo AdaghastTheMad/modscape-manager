@@ -13,6 +13,7 @@ pub mod port;
 pub mod resolve;
 pub mod sources;
 pub mod store;
+pub mod templates;
 
 use base64::Engine;
 use error::{AppError, AppResult};
@@ -35,6 +36,7 @@ pub struct AppState {
     pub fetcher: Arc<Fetcher>,
     pub modrinth: Modrinth,
     pub curseforge: CurseForge,
+    pub templates: templates::Library,
 }
 
 /// Catalog plus the hash lookups importers need.
@@ -83,7 +85,21 @@ impl AppState {
             .expect("HTTP client");
         let db = Arc::new(db);
         let fetcher = Arc::new(Fetcher::new(http, db.clone()));
-        Self { modrinth: Modrinth::new(fetcher.clone()), curseforge: CurseForge::new(fetcher.clone()), db, fetcher }
+        let templates = templates::Library::new(std::env::temp_dir().join(format!("modpack-planner-templates-{}", uuid::Uuid::new_v4())));
+        Self { modrinth: Modrinth::new(fetcher.clone()), curseforge: CurseForge::new(fetcher.clone()), db, fetcher, templates }
+    }
+
+    /// Keeps override templates in `root` (the app data dir's `templates/`).
+    pub fn with_templates(mut self, root: std::path::PathBuf) -> Self {
+        self.templates = templates::Library::new(root);
+        self
+    }
+
+    /// Export pre-flight including override templates.
+    pub async fn export_plan(&self, pack: &Pack, format: export::Format) -> export::ExportPlan {
+        let mut plan = export::plan_export(pack, &self.catalog(), format).await;
+        export::add_overrides(&mut plan, pack, &self.templates, &store::now_iso());
+        plan
     }
 
     pub fn source(&self, s: Source) -> &dyn ModSource {
@@ -433,13 +449,13 @@ async fn plan_port(state: St<'_>, pack: Pack, target: port::PortTarget) -> AppRe
 // ---------------- export / import ----------------
 #[tauri::command]
 async fn export_plan(state: St<'_>, pack: Pack, format: export::Format) -> AppResult<export::ExportPlan> {
-    Ok(export::plan_export(&pack, &state.catalog(), format).await)
+    Ok(state.export_plan(&pack, format).await)
 }
 
 /// Re-plans (so the file matches the pack right now), asks where to save, writes.
 #[tauri::command]
 async fn export_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack, format: export::Format) -> AppResult<Option<String>> {
-    let plan = export::plan_export(&pack, &state.catalog(), format).await;
+    let plan = state.export_plan(&pack, format).await;
     if !plan.can_export {
         return Err(AppError::Invalid("Fix the errors in the pre-flight check before exporting.".into()));
     }
@@ -450,7 +466,8 @@ async fn export_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack, format: e
     let picked = app.dialog().file().set_title("Export pack").add_filter(label, &[ext]).set_file_name(format!("{}.{ext}", safe_file_name(&pack.name))).blocking_save_file();
     let Some(fp) = picked else { return Ok(None) };
     let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
-    export::write_archive(&pack, &plan, &path)?;
+    let overrides = state.templates.export_files(&pack)?;
+    export::write_archive(&pack, &plan, &overrides, &path)?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -461,16 +478,19 @@ pub struct ImportReport {
     notes: Vec<String>,
     unknown: Vec<String>,
     has_overrides: bool,
+    /// What the source offers as an override template (when it has config files).
+    override_source: Option<templates::SourceScan>,
 }
 
-fn store_import(st: &AppState, mut r: import::Imported) -> AppResult<ImportReport> {
+fn store_import(st: &AppState, mut r: import::Imported, source: &std::path::Path) -> AppResult<ImportReport> {
     let mut notes = r.notes;
     notes.extend(model::normalize(&mut r.pack)?);
     st.db.put_pack(&r.pack)?;
-    if r.has_overrides {
-        notes.push("It also has config/override files; those become override templates in a later milestone and weren't imported.".into());
+    let override_source = if r.has_overrides { templates::scan_source(source).ok().filter(|s| !s.entries.is_empty()) } else { None };
+    if r.has_overrides && override_source.is_none() {
+        notes.push("It also has override files, but none that a template could keep.".into());
     }
-    Ok(ImportReport { pack: r.pack, notes, unknown: r.unknown, has_overrides: r.has_overrides })
+    Ok(ImportReport { pack: r.pack, notes, unknown: r.unknown, has_overrides: r.has_overrides, override_source })
 }
 
 pub async fn import_file_impl(st: &AppState, path: &std::path::Path) -> AppResult<ImportReport> {
@@ -480,12 +500,12 @@ pub async fn import_file_impl(st: &AppState, path: &std::path::Path) -> AppResul
     }
     let bytes = std::fs::read(path).map_err(|e| AppError::Storage(format!("Couldn't read the file: {e}")))?;
     let r = import::import_archive(&bytes, &st.live()).await?;
-    store_import(st, r)
+    store_import(st, r, path)
 }
 
 pub async fn import_instance_impl(st: &AppState, dir: &std::path::Path) -> AppResult<ImportReport> {
     let r = import::import_prism_instance(dir, &st.live()).await?;
-    store_import(st, r)
+    store_import(st, r, dir)
 }
 
 #[tauri::command]
@@ -599,6 +619,125 @@ async fn pick_icon(app: tauri::AppHandle) -> AppResult<Option<String>> {
     Ok(Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))))
 }
 
+// ---------------- override templates (M9) ----------------
+type Tpl = templates::TemplateView;
+fn now() -> String {
+    store::now_iso()
+}
+
+#[tauri::command]
+fn list_templates(state: St<'_>) -> AppResult<Vec<Tpl>> {
+    state.templates.list(&now())
+}
+
+#[tauri::command]
+fn create_template(state: St<'_>, name: String) -> AppResult<Tpl> {
+    state.templates.create(&name, "", &now())
+}
+
+#[tauri::command]
+fn set_template_meta(state: St<'_>, id: String, name: String, description: String) -> AppResult<Tpl> {
+    state.templates.set_meta(&id, &name, &description, &now())
+}
+
+#[tauri::command]
+fn duplicate_template(state: St<'_>, id: String) -> AppResult<Tpl> {
+    state.templates.duplicate(&id, &now())
+}
+
+#[tauri::command]
+fn delete_template(state: St<'_>, id: String) -> AppResult<()> {
+    state.templates.delete(&id)
+}
+
+#[tauri::command]
+fn read_template_file(state: St<'_>, id: String, path: String) -> AppResult<templates::FileText> {
+    state.templates.read_file(&id, &path)
+}
+
+#[tauri::command]
+fn write_template_file(state: St<'_>, id: String, path: String, text: String) -> AppResult<Tpl> {
+    state.templates.write_file(&id, &path, &text, &now())
+}
+
+#[tauri::command]
+fn delete_template_file(state: St<'_>, id: String, path: String) -> AppResult<Tpl> {
+    state.templates.delete_file(&id, &path, &now())
+}
+
+#[tauri::command]
+fn rename_template_file(state: St<'_>, id: String, from: String, to: String) -> AppResult<Tpl> {
+    state.templates.rename_file(&id, &from, &to, &now())
+}
+
+/// Copies files picked in a dialog into `dir` inside the template.
+#[tauri::command]
+async fn add_template_files(app: tauri::AppHandle, state: St<'_>, id: String, dir: String) -> AppResult<Option<Tpl>> {
+    let Some(picked) = app.dialog().file().set_title("Add files to the template").blocking_pick_files() else { return Ok(None) };
+    let paths: Vec<std::path::PathBuf> = picked.into_iter().filter_map(|f| f.into_path().ok()).collect();
+    state.templates.add_files(&id, &dir, &paths, &now()).map(Some)
+}
+
+/// Opens the template's folder (or one of its files) with the system's default app.
+#[tauri::command]
+fn open_template_path(app: tauri::AppHandle, state: St<'_>, id: String, path: Option<String>) -> AppResult<()> {
+    let base = state.templates.files_dir(&id)?;
+    std::fs::create_dir_all(&base).map_err(|e| AppError::Storage(e.to_string()))?;
+    let target = match path {
+        Some(p) => base.join(templates::clean_rel(&p)?),
+        None => base,
+    };
+    app.opener().open_path(target.display().to_string(), None::<&str>).map_err(|e| AppError::Invalid(e.to_string()))
+}
+
+/// Asks for a folder / Prism instance (`folder`) or a pack archive, then lists what it offers.
+#[tauri::command]
+async fn pick_template_source(app: tauri::AppHandle, folder: bool) -> AppResult<Option<templates::SourceScan>> {
+    let d = app.dialog().file();
+    let picked = if folder {
+        d.set_title("Choose a folder or Prism instance").blocking_pick_folder()
+    } else {
+        d.set_title("Choose a modpack").add_filter("Modpack", &["mrpack", "zip"]).blocking_pick_file()
+    };
+    let Some(fp) = picked else { return Ok(None) };
+    let p = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    blocking(move || templates::scan_source(&p)).await?.map(Some)
+}
+
+#[tauri::command]
+async fn import_template(state: St<'_>, path: String, name: String, keep: Vec<String>) -> AppResult<Tpl> {
+    state.templates.import(std::path::Path::new(&path), &name, &keep, &now())
+}
+
+#[tauri::command]
+fn template_overview(state: St<'_>, pack: Pack) -> AppResult<templates::Overview> {
+    state.templates.overview(&pack, &now())
+}
+
+/// The "reviewed as of now" record a pack stores in `appliedTemplates`.
+#[tauri::command]
+fn template_applied_ref(state: St<'_>, id: String) -> AppResult<model::AppliedRef> {
+    state.templates.applied_ref(&id)
+}
+
+/// Template id → names of the packs that use it.
+#[tauri::command]
+fn template_uses(state: St<'_>) -> AppResult<std::collections::BTreeMap<String, Vec<String>>> {
+    template_uses_impl(&state.db)
+}
+
+pub fn template_uses_impl(db: &Db) -> AppResult<std::collections::BTreeMap<String, Vec<String>>> {
+    let mut out: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for s in db.list_packs()? {
+        if let Some(p) = db.get_pack(&s.id)? {
+            for t in p.override_templates {
+                out.entry(t).or_default().push(p.name.clone());
+            }
+        }
+    }
+    Ok(out)
+}
+
 // ---------------- misc ----------------
 #[tauri::command]
 fn cache_stats(state: St<'_>) -> AppResult<store::CacheStats> {
@@ -631,7 +770,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(&dir.join("planner.db")).map_err(|e| e.to_string())?;
             payload::seed_starters(&db, &store::now_iso(), false).map_err(|e| e.to_string())?;
-            app.manage(AppState::new(db));
+            app.manage(AppState::new(db).with_templates(dir.join("templates")));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -675,7 +814,23 @@ pub fn run() {
             pick_icon,
             cache_stats,
             clear_cache,
-            open_external
+            open_external,
+            list_templates,
+            create_template,
+            set_template_meta,
+            duplicate_template,
+            delete_template,
+            read_template_file,
+            write_template_file,
+            delete_template_file,
+            rename_template_file,
+            add_template_files,
+            open_template_path,
+            pick_template_source,
+            import_template,
+            template_overview,
+            template_applied_ref,
+            template_uses
         ])
         .run(tauri::generate_context!())
         .expect("error while running Modpack Planner");

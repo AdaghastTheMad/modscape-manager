@@ -80,16 +80,16 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
   );
 }
 
-export type PackView = "list" | "graph";
+export type PackView = "list" | "graph" | "overrides";
 
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onDropHit, onSaveAsPayload, updates }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onDropHit, onSaveAsPayload, updates, overrides, overrideAlerts }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
   onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
   onCrossCheck: (v: boolean) => void;
   view: PackView; onView: (v: PackView) => void; graph: React.ReactNode;
   grouping: Grouping; onGrouping: (g: Grouping) => void;
-  onDropPayload: (id: string) => void; onDropHit: (h: SearchHit) => void; onSaveAsPayload: () => void; updates: React.ReactNode;
+  onDropPayload: (id: string) => void; onDropHit: (h: SearchHit) => void; onSaveAsPayload: () => void; updates: React.ReactNode; overrides: React.ReactNode; overrideAlerts: number;
 }) {
   const by = grouping;
   const issuesByEntry = useMemo(() => {
@@ -123,7 +123,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
 
   return (
     <Panel className="pane" title={`Pack · ${count} mod${count === 1 ? "" : "s"}`} actions={
-      <Tabs label="View (G)" value={view} onChange={onView} tabs={[{ id: "list", label: "List" }, { id: "graph", label: "Graph" }]} />
+      <Tabs label="View (G)" value={view} onChange={onView} tabs={[{ id: "list", label: "List" }, { id: "graph", label: "Graph" }, { id: "overrides", label: overrideAlerts ? `Overrides (${overrideAlerts})` : "Overrides" }]} />
     }>
       <div className="pane__fixed stack">
         <Checks pack={pack} analysis={analysis} analyzing={analyzing} onFix={onFix} onSelect={onSelect} onRecheck={onRecheck}
@@ -131,7 +131,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
         {updates}
         {notice}
         {undo && <Notice title={undo.label}><Button size="small" onClick={undo.run}>Undo</Button></Notice>}
-        {count > 0 && (
+        {count > 0 && view !== "overrides" && (
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="muted" style={{ fontSize: 12 }}>
               {sites.modrinth} from Modrinth · {sites.curseforge} from CurseForge
@@ -140,13 +140,13 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
             {sites.oneSite > 0 && <Button size="small" onClick={onMatchAll} disabled={matching} title="Look for each mod's copy on the other site">{matching ? "Matching…" : "Match sites"}</Button>}
           </div>
         )}
-        {count > 0 && (
+        {count > 0 && view !== "overrides" && (
           <label className="mc-check" style={{ fontSize: 12 }} title="For mods linked on both sites, also read the other copy's required dependencies. Uses extra CurseForge API calls, so it's off unless you turn it on.">
             <input type="checkbox" checked={!!pack.crossCheckDeps} onChange={(e) => onCrossCheck(e.target.checked)} />
             Double-check dependencies with each mod's other-site copy
           </label>
         )}
-        {count > 0 && (
+        {count > 0 && view !== "overrides" && (
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="muted" style={{ fontSize: 12 }}>{count - deps} added by you · {deps} dependenc{deps === 1 ? "y" : "ies"}</span>
             <Button size="small" onClick={onSaveAsPayload} title="Save the mods you added (not their dependencies) as a reusable payload">Save as payload…</Button>
@@ -156,7 +156,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
           </div>
         )}
       </div>
-      {view === "graph" ? graph : <div className="pane__body stack"
+      {view === "graph" ? graph : view === "overrides" ? overrides : <div className="pane__body stack"
         onDragOver={acceptDrag}
         onDrop={(e) => { const d = dragged(e); endDrag(); if (!d) return; e.preventDefault(); if (d.kind === "payload") onDropPayload(d.id); else onDropHit(d.hit); }}>
         {count === 0 ? (

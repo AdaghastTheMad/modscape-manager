@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { unsaved, useUnsavedGuard } from "../unsaved";
 import { api, type AppError, type Loader, type Payload, type PCandidate, type PChoiceOption, type PItem, type PSlot, type SearchHit } from "../api";
 import { Button, ErrorNotice, Input, ModIcon, Modal, Notice, Panel, SourceBadge } from "../components/kit";
 import { fmtCompact, useDebounced } from "../hooks";
@@ -178,29 +179,6 @@ function ChoiceEditor({ item, onChange, onRemove, mover }: { item: Extract<PItem
   );
 }
 
-// ---------------------------------------------------------------- unsaved-changes guard
-/** The open editor's state, so leaving it (another payload, another tab) can ask first. */
-export const unsavedPayload = { dirty: false, name: "", save: async (): Promise<boolean> => true };
-
-/** Runs `go` now if nothing is unsaved; otherwise returns a prompt to render. */
-export function useUnsavedGuard() {
-  const [pending, setPending] = useState<(() => void) | null>(null);
-  const guard = (go: () => void) => { if (unsavedPayload.dirty) setPending(() => go); else go(); };
-  const prompt = pending && (
-    <Modal title="Unsaved changes" width={460} onClose={() => setPending(null)}>
-      <div className="stack-lg">
-        <p><strong>{unsavedPayload.name || "This payload"}</strong> has changes that aren't saved. Payloads only change when you save them.</p>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <Button onClick={() => setPending(null)}>Keep editing</Button>
-          <Button variant="danger" onClick={() => { unsavedPayload.dirty = false; const go = pending; setPending(null); go(); }}>Discard changes</Button>
-          <Button variant="primary" onClick={async () => { if (await unsavedPayload.save()) { const go = pending; setPending(null); go(); } else setPending(null); }}>Save</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-  return { guard, prompt };
-}
-
 // ---------------------------------------------------------------- payload editor
 function PayloadEditor({ initial, all, onSaved, onDeleted }: { initial: Payload; all: Payload[]; onSaved: (p: Payload) => void; onDeleted: () => void }) {
   const [p, setP] = useState(initial);
@@ -219,8 +197,8 @@ function PayloadEditor({ initial, all, onSaved, onDeleted }: { initial: Payload;
     catch (e) { setError(e as AppError); return false; }
   };
   // Publish state for the leave-without-saving prompt; cleared when the editor goes away.
-  unsavedPayload.dirty = dirty; unsavedPayload.name = p.name; unsavedPayload.save = save;
-  useEffect(() => () => { unsavedPayload.dirty = false; }, []);
+  unsaved.isDirty = () => dirty; unsaved.name = p.name; unsaved.nameNow = null; unsaved.save = save; unsaved.hint = "Payloads only change when you save them.";
+  useEffect(() => () => { unsaved.isDirty = () => false; }, []);
   const others = all.filter((x) => x.id !== p.id);
   return (
     <div className="stack-lg">

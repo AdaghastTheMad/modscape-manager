@@ -3,6 +3,7 @@ import { api, type AppError, type ImportReport } from "../api";
 import { Button, ErrorNotice, Modal, Notice, Panel, Slot } from "../components/kit";
 import { loaderLabel, type PackSummary } from "../model";
 import { NewPackWizard } from "./NewPack";
+import { ImportTemplateDialog } from "./Templates";
 
 export function Packs({ onOpen }: { onOpen: (id: string) => void }) {
   const [packs, setPacks] = useState<PackSummary[] | null>(null);
@@ -12,8 +13,10 @@ export function Packs({ onOpen }: { onOpen: (id: string) => void }) {
   const [confirmDelete, setConfirmDelete] = useState<PackSummary | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
+  const [tplFrom, setTplFrom] = useState<ImportReport | null>(null);
+  const [tplNote, setTplNote] = useState<string | null>(null);
   const runImport = async (fn: () => Promise<ImportReport | null>) => {
-    setError(null); setNotes([]); setImporting(true);
+    setError(null); setNotes([]); setImporting(true); setTplNote(null);
     try { const r = await fn(); if (r) { setReport(r); await refresh(); } }
     catch (e) { setError(e as AppError); }
     finally { setImporting(false); }
@@ -83,12 +86,29 @@ export function Packs({ onOpen }: { onOpen: (id: string) => void }) {
                 <ul className="dep-list">{report.unknown.map((u) => <li key={u}><code>{u}</code></li>)}</ul>
               </Notice>
             )}
+            {report.overrideSource && !tplNote && (
+              <Notice title="It also has config files">
+                <div className="muted">{report.overrideSource.entries.map((e) => e.name + (e.isDir ? "/" : "")).join(", ")}. Save them as an override template, attached to this pack, so its exports carry them.</div>
+                <Button size="small" onClick={() => setTplFrom(report)}>Save as template…</Button>
+              </Notice>
+            )}
+            {tplNote && <Notice tone="ok" title={tplNote} />}
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <Button onClick={() => setReport(null)}>Close</Button>
               <Button variant="primary" onClick={() => { const id = report.pack.id; setReport(null); onOpen(id); }}>Open pack</Button>
             </div>
           </div>
         </Modal>
+      )}
+      {tplFrom?.overrideSource && (
+        <ImportTemplateDialog initial={{ ...tplFrom.overrideSource, suggestedName: `${tplFrom.pack.name} configs` }} onClose={() => setTplFrom(null)} onDone={async (t) => {
+          try {
+            const p = await api.getPack(tplFrom.pack.id);
+            const ref = await api.templateAppliedRef(t.id);
+            await api.savePack({ ...p, overrideTemplates: [...p.overrideTemplates, t.id], appliedTemplates: [...p.appliedTemplates.filter((a) => a.id !== t.id), ref] });
+            setTplNote(`Saved template "${t.name}" (${t.files.length} files) and attached it to ${p.name}.`);
+          } catch (e) { setError(e as AppError); }
+        }} />
       )}
       {confirmDelete && (
         <Modal title="Delete pack?" width={460} onClose={() => setConfirmDelete(null)}>

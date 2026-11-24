@@ -778,7 +778,7 @@ mod tests {
 
         let mut newer = p.clone();
         newer.version = 3;
-        pack.applied_payloads.push(crate::model::AppliedRef { id: p.id.clone(), version: 1 });
+        pack.applied_payloads.push(crate::model::AppliedRef { id: p.id.clone(), version: 1, files: Default::default() });
         let u = updates_for(&pack, &HashMap::from([(p.id.clone(), newer)]));
         assert_eq!((u.len(), u[0].applied_version, u[0].current_version), (1, 1, 3));
         let sk = key_of(&pack, &f, "sodium");

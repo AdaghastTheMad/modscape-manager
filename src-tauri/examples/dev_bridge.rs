@@ -70,13 +70,14 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let alt: Option<String> = arg(a, "altId")?;
             to_val(resolve::plan_add(&pack, &arg::<String>(a, "projectId")?, pin.as_deref(), for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
         }
-        "export_plan" => Ok(serde_json::to_value(modpack_planner_lib::export::plan_export(&arg(a, "pack")?, &st.catalog(), arg(a, "format")?).await).unwrap()),
+        "export_plan" => Ok(serde_json::to_value(st.export_plan(&arg(a, "pack")?, arg(a, "format")?).await).unwrap()),
         // Dev only: write an export / import a file at a path inside test-env/.
         "dev_export_to" => {
             let pack: model::Pack = arg(a, "pack")?;
             let path = test_env_path(&arg::<String>(a, "path")?)?;
-            let plan = modpack_planner_lib::export::plan_export(&pack, &st.catalog(), arg(a, "format")?).await;
-            to_val(modpack_planner_lib::export::write_archive(&pack, &plan, &path).map(|_| path.display().to_string()))
+            let plan = st.export_plan(&pack, arg(a, "format")?).await;
+            let overrides = st.templates.export_files(&pack).map_err(|e| serde_json::to_value(e).unwrap())?;
+            to_val(modpack_planner_lib::export::write_archive(&pack, &plan, &overrides, &path).map(|_| path.display().to_string()))
         }
         "dev_import_from" => to_val(modpack_planner_lib::import_file_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
         "dev_import_instance" => to_val(modpack_planner_lib::import_instance_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
@@ -106,6 +107,29 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             Ok(serde_json::to_value(resolve::compatible_files(&vs, &mc, loader)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
+        // Override templates (library lives in test-env/bridge-templates; source paths are relative to test-env/).
+        "list_templates" => to_val(st.templates.list(&store::now_iso())),
+        "create_template" => to_val(st.templates.create(&arg::<String>(a, "name")?, "", &store::now_iso())),
+        "set_template_meta" => to_val(st.templates.set_meta(&arg::<String>(a, "id")?, &arg::<String>(a, "name")?, &arg::<String>(a, "description")?, &store::now_iso())),
+        "duplicate_template" => to_val(st.templates.duplicate(&arg::<String>(a, "id")?, &store::now_iso())),
+        "delete_template" => to_val(st.templates.delete(&arg::<String>(a, "id")?)),
+        "read_template_file" => to_val(st.templates.read_file(&arg::<String>(a, "id")?, &arg::<String>(a, "path")?)),
+        "write_template_file" => to_val(st.templates.write_file(&arg::<String>(a, "id")?, &arg::<String>(a, "path")?, &arg::<String>(a, "text")?, &store::now_iso())),
+        "delete_template_file" => to_val(st.templates.delete_file(&arg::<String>(a, "id")?, &arg::<String>(a, "path")?, &store::now_iso())),
+        "rename_template_file" => to_val(st.templates.rename_file(&arg::<String>(a, "id")?, &arg::<String>(a, "from")?, &arg::<String>(a, "to")?, &store::now_iso())),
+        "scan_template_source" => to_val(modpack_planner_lib::templates::scan_source(&test_env_path(&arg::<String>(a, "path")?)?)),
+        "import_template" => {
+            let p = std::path::PathBuf::from(arg::<String>(a, "path")?);
+            let root = test_env_path("")?;
+            if !p.starts_with(&root) {
+                return Err(json!({"code": "invalid", "message": "dev bridge imports only from test-env/"}));
+            }
+            to_val(st.templates.import(&p, &arg::<String>(a, "name")?, &arg::<Vec<String>>(a, "keep")?, &store::now_iso()))
+        }
+        "template_overview" => to_val(st.templates.overview(&arg(a, "pack")?, &store::now_iso())),
+        "template_applied_ref" => to_val(st.templates.applied_ref(&arg::<String>(a, "id")?)),
+        "template_uses" => to_val(modpack_planner_lib::template_uses_impl(&st.db)),
+        "pick_template_source" | "add_template_files" | "open_template_path" => Ok(Value::Null),
         "open_external" | "pick_icon" | "export_project" | "import_project" => Ok(Value::Null),
         other => Err(json!({"code": "invalid", "message": format!("dev bridge doesn't support {other}")})),
     }
@@ -126,7 +150,7 @@ fn test_env_path(rel: &str) -> Result<std::path::PathBuf, Value> {
 }
 
 fn main() {
-    let st = AppState::new(store::Db::memory());
+    let st = AppState::new(store::Db::memory()).with_templates(test_env_path("bridge-templates/x").unwrap().parent().unwrap().to_path_buf());
     modpack_planner_lib::payload::seed_starters(&st.db, &store::now_iso(), false).unwrap();
     // Never touch the OS keychain from a dev tool: CurseForge stays off here.
     st.curseforge.disable_keychain();

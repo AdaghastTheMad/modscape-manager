@@ -11,6 +11,8 @@ import { ExportDialog } from "./workspace/ExportDialog";
 import { DuplicateDialog } from "./workspace/DuplicateDialog";
 import { PayloadDialog, type PayloadApply } from "./workspace/PayloadDialog";
 import { PayloadsPane } from "./workspace/PayloadsPane";
+import { Overrides } from "./workspace/Overrides";
+import type { Overview } from "../api";
 import type { PayloadUpdate } from "../api";
 import type { BulkVersionAction, GraphPos } from "./workspace/Graph";
 import type { Grouping } from "../grouping";
@@ -169,6 +171,16 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     if (!latest.current) return;
     api.payloadUpdates(latest.current).then(setUpdates, () => {});
   }, [appliedSig, payloadDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Override templates: what goes in overrides/, clashes, updates (refetched when attachments or mods change).
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [overviewError, setOverviewError] = useState<AppError | null>(null);
+  const tplSig = pack ? JSON.stringify([pack.overrideTemplates, pack.appliedTemplates.map((a) => [a.id, a.version]), Object.keys(pack.entries).length]) : "";
+  useEffect(() => {
+    if (!latest.current) return;
+    if (latest.current.overrideTemplates.length === 0) { setOverview(null); return; }
+    api.templateOverview(latest.current).then((o) => { setOverview(o); setOverviewError(null); }, setOverviewError);
+  }, [tplSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Applies a payload preview: each pick is planned against the pack as it
   // will be after the previous ones (dependencies included), then everything
@@ -523,6 +535,8 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           onRecheck={() => runAnalysis(true)} onSuggest={addMany} onDismiss={dismiss} adding={batchAdding}
           onMatchAll={matchAll} matching={matching}
           onCrossCheck={(v) => update((p) => ({ ...p, crossCheckDeps: v }))}
+          overrides={<Overrides pack={pack} overview={overview} error={overviewError} onUpdate={update} onSelect={(k) => setSelection({ kind: "entry", key: k })} />}
+          overrideAlerts={(overview?.updates.length ?? 0) + (overview?.missing.length ?? 0)}
           view={view} onView={setView} grouping={listGrouping} onGrouping={setGrouping("list")}
           graph={view === "graph" && (
             <Suspense fallback={<p className="muted">Loading graph…</p>}><Graph pack={pack} analysis={analysis} selectedKey={selection?.kind === "entry" ? selection.key : undefined}
