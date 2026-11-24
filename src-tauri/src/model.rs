@@ -163,6 +163,11 @@ pub struct Pack {
     /// Optional-dependency suggestions the user turned down (Modrinth project ids).
     #[serde(default)]
     pub dismissed_suggestions: Vec<String>,
+    /// Also check each mod's CurseForge copy (when linked on both sites) for
+    /// required dependencies the Modrinth copy doesn't list. Off by default:
+    /// it costs extra CurseForge API calls.
+    #[serde(default)]
+    pub cross_check_deps: bool,
     #[serde(default)]
     pub created_at: String,
     #[serde(default)]
@@ -379,6 +384,7 @@ pub mod tests {
             applied_templates: vec![],
             snapshots: vec![],
             dismissed_suggestions: vec![],
+            cross_check_deps: false,
             created_at: "2026-11-24T00:00:00Z".into(),
             updated_at: "2026-11-24T00:00:00Z".into(),
             extra: Map::new(),

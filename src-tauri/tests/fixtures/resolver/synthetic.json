@@ -154,6 +154,14 @@
    "categories": [
     "decoration"
    ]
+  },
+  "xchk0000": {
+   "id": "xchk0000",
+   "slug": "xcheck-mod",
+   "title": "Cross Check Mod",
+   "categories": [
+    "technology"
+   ]
   }
  },
  "versions": {
@@ -565,6 +573,22 @@
     ],
     "loaders": [
      "fabric"
+    ],
+    "dependencies": []
+   }
+  ],
+  "xchk0000|1.21.1": [
+   {
+    "id": "xchkv1",
+    "project_id": "xchk0000",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "neoforge"
     ],
     "dependencies": []
    }

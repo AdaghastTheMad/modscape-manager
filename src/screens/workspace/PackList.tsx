@@ -96,10 +96,11 @@ function groupTitle(g: string, by: GroupBy): string {
   return by === "pulledInBy" ? `Pulled in by ${g}` : prettyCategory(g);
 }
 
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
   onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
+  onCrossCheck: (v: boolean) => void;
 }) {
   const [by, setBy] = useState<GroupBy>("category");
   const issuesByEntry = useMemo(() => {
@@ -151,6 +152,12 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
             </span>
             {sites.oneSite > 0 && <Button size="small" onClick={onMatchAll} disabled={matching} title="Look for each mod's copy on the other site">{matching ? "Matching…" : "Match sites"}</Button>}
           </div>
+        )}
+        {count > 0 && (
+          <label className="mc-check" style={{ fontSize: 12 }} title="For mods linked on both sites, also read the other copy's required dependencies. Uses extra CurseForge API calls, so it's off unless you turn it on.">
+            <input type="checkbox" checked={!!pack.crossCheckDeps} onChange={(e) => onCrossCheck(e.target.checked)} />
+            Double-check dependencies with each mod's other-site copy
+          </label>
         )}
         {count > 0 && (
           <div className="row" style={{ justifyContent: "space-between" }}>

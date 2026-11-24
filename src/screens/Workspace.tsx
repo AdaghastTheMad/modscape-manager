@@ -82,7 +82,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     }
   }, []);
   const analysisInputs = pack && JSON.stringify([
-    pack.mcVersion, pack.loader, pack.channelPolicy, pack.dismissedSuggestions,
+    pack.mcVersion, pack.loader, pack.channelPolicy, pack.dismissedSuggestions, pack.crossCheckDeps,
     Object.entries(pack.entries).map(([k, e]) => [k, e.ref, e.fileId, e.reason]),
   ]);
   useEffect(() => {
@@ -343,7 +343,8 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           selectedKey={selection?.kind === "entry" ? selection.key : undefined}
           onSelect={(k) => setSelection({ kind: "entry", key: k })} onRemove={remove} onFix={applyFix}
           onRecheck={() => runAnalysis(true)} onSuggest={addMany} onDismiss={dismiss} adding={batchAdding}
-          onMatchAll={matchAll} matching={matching} />
+          onMatchAll={matchAll} matching={matching}
+          onCrossCheck={(v) => update((p) => ({ ...p, crossCheckDeps: v }))} />
         <Details pack={pack} analysis={analysis} selection={selection} onAdd={addHit} onAddProject={(id, pv, forKey) => addProject(id, pv, undefined, forKey)}
           onUseSource={useSource} onLink={link} onUnlink={unlink}
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}

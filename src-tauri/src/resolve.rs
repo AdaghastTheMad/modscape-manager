@@ -717,6 +717,70 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
         }
     }
 
+    // 4a. Optional double-check: the other site's copy may list required
+    // dependencies this one doesn't. Only for mods linked on both sites.
+    if pack.cross_check_deps {
+        let linked: Vec<(String, String)> = pack
+            .entries
+            .iter()
+            .filter(|(k, _)| chosen.contains_key(*k))
+            .filter_map(|(k, e)| {
+                let other = match e.mod_ref.preferred {
+                    Source::Modrinth => e.mod_ref.curseforge_id.map(curseforge::cf_id),
+                    Source::Curseforge => e.mod_ref.modrinth_id.clone(),
+                }?;
+                Some((k.clone(), other))
+            })
+            .collect();
+        let others: Vec<(String, Option<Version>)> = stream::iter(linked)
+            .map(|(k, pid)| async move {
+                let vs = cat.versions(&pid, mc, loader, force).await.unwrap_or_default();
+                (k, select_version(&vs, mc, loader, pack.channel_policy))
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
+        let mut missing: Vec<(String, String)> = Vec::new(); // (entry key, dep project id)
+        for (k, v) in others {
+            let Some(v) = v else { continue };
+            for d in v.dependencies.iter().filter(|d| d.dependency_type == DepType::Required) {
+                if let Some(dp) = &d.project_id {
+                    if !index.contains_key(dp) && dp != &v.project_id {
+                        missing.push((k.clone(), dp.clone()));
+                    }
+                }
+            }
+        }
+        if !missing.is_empty() {
+            let mut ids: Vec<String> = missing.iter().map(|(_, d)| d.clone()).collect();
+            ids.sort();
+            ids.dedup();
+            let infos: HashMap<String, ProjectInfo> = cat.projects(&ids, force).await.unwrap_or_default().into_iter().map(|p| (p.id.clone(), p)).collect();
+            for (k, dp) in missing {
+                let Some(info) = infos.get(&dp) else { continue };
+                // Already in the pack under its other-site id (same slug and name)?
+                if same_mod_elsewhere(pack, &dp, info).is_some() || pack.entries.values().any(|e| norm(&e.display.slug) == norm(&info.slug) && norm(&e.display.name) == norm(&info.title)) {
+                    continue;
+                }
+                let site = if dp.starts_with(curseforge::PREFIX) { "CurseForge" } else { "Modrinth" };
+                let a_name = &pack.entries[&k].display.name;
+                let issue_id = format!("missing_other:{k}:{dp}");
+                if issues.iter().any(|i| i.id == issue_id) {
+                    continue;
+                }
+                issues.push(Issue {
+                    id: issue_id,
+                    severity: Severity::Warning,
+                    kind: "missing_dependency_other_site",
+                    entry_key: Some(k.clone()),
+                    other_key: None,
+                    message: format!("{a_name}'s {site} copy also requires {}, which isn't in the pack.", info.title),
+                    fix: Some(Fix::AddProject { project_id: dp.clone(), name: info.title.clone(), pin_version: None, for_key: Some(k.clone()) }),
+                });
+            }
+        }
+    }
+
     // 4b. Conflicts declared in the mods' own files (known list).
     for c in &known_conflicts().conflicts {
         if let (Some(ka), Some(kb)) = (find_side(pack, &c.a), find_side(pack, &c.b)) {
@@ -1598,6 +1662,26 @@ pub(crate) mod tests {
         assert_eq!(inc.len(), 1, "{:?}", a.issues);
         assert!(inc[0].message.contains("won't load together"), "{}", inc[0].message);
         assert!(known_conflicts().conflicts.iter().all(|c| !c.source.is_empty()));
+    }
+
+    #[test]
+    fn curseforge_double_check_is_opt_in() {
+        let f = Fixture::load();
+        let mut pack = pack_for("1.21.1", Loader::Neoforge);
+        let mut keys = counter();
+        block(add(&f, &mut pack, "architectury-api", &mut keys)); // Modrinth copy of a lib the CF copy needs
+        block(add(&f, &mut pack, "xcheck-mod", &mut keys)); // Modrinth copy lists no deps…
+        let x = key_of(&pack, &f, "xcheck-mod");
+        pack.entries.get_mut(&x).unwrap().mod_ref.curseforge_id = Some(1001); // …its CurseForge copy needs Architectury + CF Only Lib
+        let off = block(analyze(&pack, &f, false, NOW));
+        assert!(!kinds(&off).contains(&"missing_dependency_other_site"), "off by default");
+        pack.cross_check_deps = true;
+        let on = block(analyze(&pack, &f, false, NOW));
+        let found: Vec<&Issue> = on.issues.iter().filter(|i| i.kind == "missing_dependency_other_site").collect();
+        assert_eq!(found.len(), 1, "Architectury is already in (matched by slug+name); only CF Only Lib is missing: {:?}", on.issues);
+        assert!(found[0].message.contains("CF Only Lib"));
+        assert_eq!(found[0].severity, Severity::Warning);
+        assert!(matches!(&found[0].fix, Some(Fix::AddProject { project_id, for_key: Some(k), .. }) if project_id == "cf:3001" && k == &x));
     }
 
     #[test]

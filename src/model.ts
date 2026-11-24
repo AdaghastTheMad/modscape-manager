@@ -48,6 +48,8 @@ export interface Pack {
   appliedTemplates: { id: string; version: number }[];
   snapshots: unknown[];
   dismissedSuggestions: string[];
+  /** Also check CurseForge copies' required deps (extra API calls; off by default). */
+  crossCheckDeps?: boolean;
   createdAt: string;
   updatedAt: string;
   [extra: string]: unknown;
