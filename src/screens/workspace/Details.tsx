@@ -188,7 +188,7 @@ export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemo
     return () => { live = false; };
   }, [ref?.source, ref?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!ref) return <Panel className="pane" title="Details"><div className="empty-state"><p>Select a mod to see its details here.</p></div></Panel>;
+  if (!ref) return <Panel className="pane" title="Details"><div className="empty-state"><p>Select a mod in the pack to see its files, dependencies, tags and notes. Click a search result to preview it before adding.</p></div></Panel>;
   const key = entryKey ?? (selection?.kind === "hit" ? findHit(pack, selection.hit) : undefined);
   const entry = key ? pack.entries[key] : undefined;
   const rep = key ? analysis?.entries[key] : undefined;

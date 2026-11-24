@@ -21,6 +21,12 @@ import { usePrefs } from "../prefs";
 const Graph = lazy(() => import("./workspace/Graph").then((m) => ({ default: m.Graph })));
 import type { PackView } from "./workspace/PackList";
 import { SuggestionPicker } from "./workspace/Suggestions";
+import { restore, stateOf, type PackState } from "../history";
+import { SnapshotsDialog } from "./workspace/SnapshotsDialog";
+
+import { IS_MAC } from "../components/Shortcuts";
+const MOD = IS_MAC ? "⌘" : "Ctrl+";
+const REDO_KEYS = IS_MAC ? "⇧⌘Z" : "Ctrl+Y";
 
 type AddNotice = { title: string; lines: string[]; suggestions: Suggestion[]; tone: "ok" | "warn" | "error" };
 
@@ -39,6 +45,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
   const [matching, setMatching] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const [view, setView] = useState<PackView>("list");
   // List grouping and graph regions: independent unless synced in Settings.
   const prefs = usePrefs();
@@ -60,12 +67,41 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
   // State updaters must stay pure (React may run them twice), so anything
   // random or time-based is computed before calling update().
   useEffect(() => { latest.current = pack; }, [pack]);
-  const update = useCallback((fn: (p: Pack) => Pack) => {
+  // ---- undo/redo: every change through update() is a step, except graph positions.
+  // Several updates before the next render collapse into one step.
+  const past = useRef<{ state: PackState; label: string; from: Pack }[]>([]);
+  const future = useRef<{ state: PackState; label: string; from: Pack }[]>([]);
+  const [, setHistoryTick] = useState(0); // re-render when the stacks change
+  const update = useCallback((fn: (p: Pack) => Pack, opts?: { label?: string; history?: boolean }) => {
     const at = nowIso();
+    const before = latest.current;
+    if (before && opts?.history !== false && past.current[past.current.length - 1]?.from !== before) {
+      past.current = [...past.current.slice(-99), { state: stateOf(before), label: opts?.label ?? "last change", from: before }];
+      future.current = [];
+      setHistoryTick((n) => n + 1);
+    }
     setPack((p) => (p ? { ...fn(p), updatedAt: at } : p));
     dirty.current = true;
     setSaveState("pending");
   }, []);
+  const step = useCallback((dir: "undo" | "redo") => {
+    const cur = latest.current;
+    if (!cur) return;
+    const from = dir === "undo" ? past : future;
+    const to = dir === "undo" ? future : past;
+    const s = from.current[from.current.length - 1];
+    if (!s) return;
+    from.current = from.current.slice(0, -1);
+    to.current = [...to.current, { state: stateOf(cur), label: s.label, from: cur }];
+    const next = { ...restore(s.state, cur), updatedAt: nowIso() };
+    latest.current = next;
+    setPack(next);
+    dirty.current = true;
+    setSaveState("pending");
+    setHistoryTick((n) => n + 1);
+  }, []);
+  const undoLabel = past.current[past.current.length - 1]?.label;
+  const redoLabel = future.current[future.current.length - 1]?.label;
 
   // ---- autosave
   const flush = useCallback(async () => {
@@ -137,7 +173,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
         const root = next.entries[plan.rootKey];
         if (at && root) next.entries = { ...next.entries, [plan.rootKey]: { ...root, graphPos: { x: Math.round(at.x), y: Math.round(at.y), pinned: true } } };
         return next;
-      });
+      }, { label: `add ${plan.additions.find((a) => a.key === plan.rootKey)?.entry.display.name ?? "a mod"}` });
       setNotice(describePlan(p, plan));
       if (!forKey) setSelection({ kind: "entry", key: plan.rootKey });
     } catch (e) {
@@ -235,7 +271,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
       for (const [id, v] of a.plan.applied) applied.set(id, v);
       next = { ...next, entries, choices: { ...next.choices, ...a.choices }, appliedPayloads: [...applied].map(([id, version]) => ({ id, version })) };
       return next;
-    });
+    }, { label: `apply ${a.plan.name}` });
     const deps = plans.flatMap((pl) => pl.additions.filter((x) => x.key !== pl.rootKey).map((x) => x.entry.display.name));
     if (removedEntries.length) {
       setUndo({
@@ -314,7 +350,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
         changed = true;
       }
       return changed ? { ...p, entries } : p;
-    });
+    }, { history: false });
   }, [update]);
   const bulkVersions = useCallback((keys: string[], action: BulkVersionAction) => {
     update((p) => {
@@ -359,7 +395,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
         if (e.pulledInBy.some((x) => keys.includes(x))) entries[k] = { ...e, pulledInBy: e.pulledInBy.filter((x) => !keys.includes(x)) };
       }
       return { ...cur, entries };
-    });
+    }, { label: removed.length === 1 ? `remove ${removed[0][1].display.name}` : `remove ${removed.length} mods` });
     setSelection((s) => (s?.kind === "entry" && keys.includes(s.key) ? null : s));
     const label = removed.length === 1 ? `Removed ${removed[0][1].display.name}` : `Removed ${removed[0][1].display.name} and ${removed.length - 1} more`;
     setUndo({
@@ -417,7 +453,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     if (!before) return;
     const after = applyPreference(before, pref);
     const changed = Object.keys(after.entries).filter((k) => after.entries[k] !== before.entries[k]);
-    update((p) => applyPreference(p, pref));
+    update((p) => applyPreference(p, pref), { label: "change the preferred site" });
     if (changed.length) {
       const old = Object.fromEntries(changed.map((k) => [k, before.entries[k]]));
       setUndo({
@@ -442,7 +478,8 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
 
   // ---- fixes and small edits
   const pin = useCallback((key: string, versionId: string | null) => {
-    update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: { ...p.entries[key], fileId: versionId ?? undefined } } } : p));
+    update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: { ...p.entries[key], fileId: versionId ?? undefined } } } : p),
+      { label: `${versionId ? "pin" : "unpin"} ${latest.current?.entries[key]?.display.name ?? "a mod"}` });
   }, [update]);
   const applyFix = useCallback((f: Fix) => {
     switch (f.kind) {
@@ -460,14 +497,21 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
   // ---- keyboard: "/" focuses search; Delete/Backspace removes the selected entry
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typingIn(e) || orphanPrompt) return;
+      if (typingIn(e) || orphanPrompt || document.querySelector(".mc-modal-backdrop")) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !e.altKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); step(e.shiftKey ? "redo" : "undo"); return; }
+      if (e.ctrlKey && !e.metaKey && (e.key === "y" || e.key === "Y")) { e.preventDefault(); step("redo"); return; }
+      if (mod && e.shiftKey && (e.key === "s" || e.key === "S")) { e.preventDefault(); setSnapshotsOpen(true); return; }
+      if (mod && !e.shiftKey && (e.key === "e" || e.key === "E")) { e.preventDefault(); flush().then(() => setExporting(true)); return; }
+      if (mod && !e.shiftKey && (e.key === "s" || e.key === "S")) { e.preventDefault(); flush(); return; }
+      if (e.key === "Escape" && selection) { setSelection(null); return; }
       if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
       if ((e.key === "g" || e.key === "G") && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setView((v) => (v === "graph" ? "list" : "graph")); }
       if ((e.key === "Delete" || e.key === "Backspace") && selection?.kind === "entry") { e.preventDefault(); remove(selection.key); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selection, remove, orphanPrompt]);
+  }, [selection, remove, orphanPrompt, step, flush]);
 
   if (error && !pack) return <ErrorNotice error={error} />;
   if (!pack) return <p className="muted">Opening pack…</p>;
@@ -506,6 +550,9 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
         <span className={saveState === "error" ? "err" : "muted"} style={{ fontSize: 12 }} aria-live="polite">
           {saveState === "saved" ? "All changes saved" : saveState === "pending" ? "Saving…" : "Save failed"}
         </span>
+        <Button size="small" disabled={!undoLabel} onClick={() => step("undo")} title={undoLabel ? `Undo ${undoLabel} (${MOD}Z)` : "Nothing to undo"} aria-label={undoLabel ? `Undo ${undoLabel}` : "Undo"}>↶ Undo</Button>
+        <Button size="small" disabled={!redoLabel} onClick={() => step("redo")} title={redoLabel ? `Redo ${redoLabel} (${REDO_KEYS})` : "Nothing to redo"} aria-label={redoLabel ? `Redo ${redoLabel}` : "Redo"}>↷ Redo</Button>
+        <Button size="small" onClick={() => setSnapshotsOpen(true)} title={`Named snapshots: compare and roll back (${IS_MAC ? "⇧⌘S" : "Ctrl+Shift+S"})`}>Snapshots…</Button>
         <Button size="small" onClick={async () => { await flush(); setDuplicating(true); }} title="Copy this pack to another Minecraft version or loader">Duplicate to version…</Button>
         <Button size="small" variant="primary" onClick={async () => { await flush(); setExporting(true); }}>Export…</Button>
       </div>
@@ -554,6 +601,11 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {snapshotsOpen && (
+        <SnapshotsDialog pack={pack} onClose={() => setSnapshotsOpen(false)}
+          onSnapshots={(snaps) => update((p) => ({ ...p, snapshots: snaps }), { history: false })}
+          onRollback={(snap, keep) => update((cur) => { const r = restore(snap.state, cur); return keep ? { ...r, snapshots: [...cur.snapshots, keep] } : r; }, { label: `roll back to “${snap.name}”` })} />
+      )}
       {payloadDialog && <PayloadDialog pack={pack} payloadId={payloadDialog.id} title={payloadDialog.title} onClose={() => setPayloadDialog(null)} onApply={applyPayload} />}
       {savePayloadKeys && (
         <Modal title="Save as payload" width={460} onClose={() => setSavePayloadKeys(null)}>

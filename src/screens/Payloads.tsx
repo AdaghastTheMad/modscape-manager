@@ -300,6 +300,7 @@ export function Payloads() {
               </li>
             ))}
           </ul>
+          {list && list.length === 0 && <div className="empty-state"><p>No payloads. Press New to bundle mods you always use, Import one someone shared, or bring back the starters below.</p></div>}
           <Button size="small" onClick={async () => { const n = await api.restoreStarterPayloads(); setNote(n ? `Restored ${n} starter payload${n === 1 ? "" : "s"}.` : "All starter payloads are already here."); refresh(); }}>Restore starter payloads</Button>
         </div>
       </Panel>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { playClick } from "../sound";
 import { api, type AppError, type KeyStatus, type Loader, type SearchPage, type Source } from "../api";
 import { Button, Input, Notice, Panel, Select, Slot, SourceBadge, Tooltip } from "../components/kit";
 import type { CacheStats } from "../api";
@@ -143,6 +144,15 @@ function InterfaceSection() {
         Keep the list's grouping and the graph's regions in sync
       </label>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>Off: each view keeps its own grouping. On: changing one changes both.</p>
+      <label className="mc-check" style={{ marginTop: 10 }}>
+        <input type="checkbox" checked={prefs.clickSound} onChange={(e) => { setPref("clickSound", e.target.checked); if (e.target.checked) playClick(); }} />
+        Click sound on buttons
+      </label>
+      <label className="mc-check" style={{ marginTop: 6 }}>
+        <input type="checkbox" checked={prefs.backdrop} onChange={(e) => setPref("backdrop", e.target.checked)} />
+        Deepslate-tile backdrop behind the panels
+      </label>
+      <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>Press <kbd>?</kbd> anywhere for the keyboard shortcuts.</p>
     </Panel>
   );
 }

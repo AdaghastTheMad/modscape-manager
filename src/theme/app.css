@@ -173,3 +173,23 @@
 .hl-n { color: #e8a2f0; }
 .hl-b { color: #ff9d7a; }
 .hl-w { color: #c9a6ff; }
+.diff section p { margin: 2px 0 6px; }
+.diff-add { color: var(--emerald, #5fd38a); }
+.diff-del { color: var(--redstone, #ff6b6b); }
+.shortcuts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.shortcuts table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.shortcuts td { padding: 3px 6px 3px 0; vertical-align: top; }
+.shortcuts__keys { white-space: nowrap; width: 1%; }
+kbd { display: inline-block; min-width: 1.6em; padding: 0 4px; margin-right: 2px; text-align: center; font: 12px/1.5 var(--font-body); color: var(--text); background: var(--slot-fill); border: 1px solid #000; box-shadow: inset -1px -1px 0 var(--stone-shadow), inset 1px 1px 0 var(--stone-grey); }
+/* Deepslate-ish tiles drawn in CSS (no game textures): seams every 32 px, faint streaks. */
+.app--backdrop .app-main {
+  background-color: #19191f;
+  background-image:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.35) 2px, transparent 2px),
+    linear-gradient(rgba(0, 0, 0, 0.35) 2px, transparent 2px),
+    linear-gradient(rgba(255, 255, 255, 0.022) 3px, transparent 3px),
+    linear-gradient(90deg, transparent 12px, rgba(255, 255, 255, 0.018) 12px, rgba(255, 255, 255, 0.018) 22px, transparent 22px);
+  background-size: 32px 32px, 32px 32px, 32px 10px, 64px 16px;
+  background-position: 0 0, 0 0, 0 4px, 0 2px;
+}
+.app-help { margin-bottom: var(--space-2); }

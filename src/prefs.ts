@@ -5,8 +5,12 @@ const KEY = "modpack-planner.prefs";
 export interface Prefs {
   /** Keep the list's grouping and the graph's regions the same. Off by default. */
   syncGrouping: boolean;
+  /** Click sound on buttons. Off by default. */
+  clickSound: boolean;
+  /** Deepslate-tile backdrop behind the panels. */
+  backdrop: boolean;
 }
-const DEFAULTS: Prefs = { syncGrouping: false };
+const DEFAULTS: Prefs = { syncGrouping: false, clickSound: false, backdrop: true };
 
 function read(): Prefs {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return DEFAULTS; }
