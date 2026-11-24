@@ -21,6 +21,9 @@ pub enum AppError {
 
     #[error("{0}")]
     Invalid(String),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
 }
 
 impl AppError {
@@ -32,6 +35,7 @@ impl AppError {
             AppError::Api { .. } => "api",
             AppError::Decode { .. } => "decode",
             AppError::Invalid(_) => "invalid",
+            AppError::Storage(_) => "storage",
         }
     }
     fn help(&self) -> Option<String> {

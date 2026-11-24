@@ -1,5 +1,7 @@
-// Minecraft-dark component kit: Button, Panel, Slot, Tooltip, Input, Tabs (+ Badge, Notice).
-import { useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from "react";
+// Minecraft-dark component kit: Button, Panel, Slot, Tooltip, Input, Tabs (+ Badge, Notice, Modal, ModIcon).
+import type { AppError } from "../api";
+import { useIcon } from "../hooks";
+import { useId, useRef, useState, type ButtonHTMLAttributes, type ComponentProps, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -63,7 +65,7 @@ export function SourceBadge({ source }: { source: "modrinth" | "curseforge" }) {
 }
 
 // ---------- Input ----------
-export function Input({ label, hint, className, ...rest }: InputHTMLAttributes<HTMLInputElement> & { label?: string; hint?: ReactNode }) {
+export function Input({ label, hint, className, ...rest }: ComponentProps<"input"> & { label?: string; hint?: ReactNode }) {
   const id = useId();
   const input = <input id={id} className={cx("mc-input", className)} {...rest} />;
   if (!label) return input;
@@ -118,4 +120,27 @@ export function Notice({ tone = "warn", title, children }: { tone?: "warn" | "er
       {children}
     </div>
   );
+}
+
+// ---------- ModIcon: Slot whose image comes from the core's icon cache ----------
+export function ModIcon({ url, ...rest }: { url?: string | null; label: string; size?: number; selected?: boolean; error?: boolean }) {
+  const src = useIcon(url);
+  return <Slot src={src} {...rest} />;
+}
+
+// ---------- Modal ----------
+export function Modal({ title, onClose, children, width = 640 }: { title: ReactNode; onClose: () => void; children: ReactNode; width?: number }) {
+  return (
+    <div className="mc-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+      <div className="mc-modal" role="dialog" aria-modal="true" style={{ width }}>
+        <Panel title={title} actions={<Button size="small" onClick={onClose} aria-label="Close">✕</Button>}>{children}</Panel>
+      </div>
+    </div>
+  );
+}
+
+// ---------- ErrorNotice ----------
+export function ErrorNotice({ error }: { error: AppError }) {
+  return <Notice tone="error" title={error.message}>{error.help && <pre>{error.help}</pre>}</Notice>;
 }

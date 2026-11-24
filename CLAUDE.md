@@ -83,11 +83,20 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 12. **Installers** — `scripts/build.sh` → `.deb`, `.AppImage`, `.dmg`.
 13. **Server variant** (nice-to-have).
 
-**Status:** M1 done (Nov 24, 2026, macOS): app opens, CF key saved to Keychain, CF test search returns via the core. Awaiting owner review before M2. Linux Mint check still pending.
+**Status:** M1 done (Nov 24, 2026, macOS). M2 built (Nov 24): awaiting owner's in-app test and review before M3. Linux Mint check still pending.
 
 ## Running it
 - `scripts/setup.sh` (or `--check`) → `scripts/dev.sh` (hot reload). Rust comes from rustup in `~/.cargo` (dev.sh sources `~/.cargo/env`).
-- Rust tests: `cd src-tauri && cargo test`. Frontend: `pnpm typecheck`, `pnpm build`.
+- Rust tests: `cd src-tauri && cargo test`. Live API smoke test (not in the normal run): `cargo test live -- --ignored --nocapture`. Frontend: `pnpm typecheck`, `pnpm build`.
+- App data (SQLite `planner.db`: packs + API cache) lives in the OS app-data dir for `io.github.adaghastthemad.modpackplanner`.
+
+## Implementation notes
+- Every outbound request goes through `src-tauri/src/fetch.rs`: host allow-list (`ALLOWED_HOSTS`), https only, SQLite cache (24 h; icons 30 d), stale-cache fallback when offline or on 5xx.
+- Mod icons reach the webview only as data: URLs from the `icon` command; the CSP blocks all remote loads.
+- Pack project files: `{ format: "modpack-planner-project", schemaVersion: 1, pack }`. Unknown fields are preserved (`extra`), newer schema versions are refused with a clear message, imports are normalised (duplicates, dangling links, missing ids) and re-id'd on collision.
+- NeoForge versions: 1.X.Y → `X.Y.*`, year-based 26.A.B → `26.A.B.*`. Quilt accepts Fabric mods in search/compat checks.
+- **Library detection:** user override wins; else a mod is a library if "library" is its only Modrinth category, or it has the tag and was pulled in as a dependency (Modrinth tags JEI/EMI as library too, so tags alone mislead).
+- React state updaters must stay pure (StrictMode runs them twice): generate ids/timestamps before calling `update()`.
 
 ## Rules (from "Instructions for Claude Code" + owner's hard rules)
 - **Mods first, and reliable.** Milestones 1–5 are the core. Don't start milestone 11 (other content types) until resolver tests pass and the M5 Prism round-trip works for both versions. Other content types may reuse the core but must never change its behaviour for mods.

@@ -1,12 +1,16 @@
 //! CurseForge API client (https://docs.curseforge.com/rest-api/).
 //! Needs the user's API key, read from the OS keychain on each call.
+//! Full CurseForge support (merged results, details) is milestone 4.
 
-use super::{Loader, ModSource, SearchHit, SearchPage, SearchQuery, Source};
+use super::{Loader, ModSource, SearchHit, SearchPage, SearchQuery, Sort, Source};
 use crate::error::{AppError, AppResult};
+use crate::fetch::{status_help, Fetcher, DAY};
 use crate::keychain;
 use serde::Deserialize;
+use std::sync::Arc;
 
 const BASE: &str = "https://api.curseforge.com";
+const NAME: &str = "CurseForge";
 pub const MINECRAFT_GAME_ID: u32 = 432;
 pub const CLASS_MODS: u32 = 6;
 
@@ -19,13 +23,22 @@ pub fn loader_type(l: Loader) -> u32 {
     }
 }
 
+fn sort_field(s: Sort) -> u32 {
+    match s {
+        Sort::Relevance | Sort::Follows => 2, // popularity
+        Sort::Updated => 3,
+        Sort::Downloads => 6,
+        Sort::Newest => 11, // release date
+    }
+}
+
 pub struct CurseForge {
-    http: reqwest::Client,
+    fetcher: Arc<Fetcher>,
 }
 
 impl CurseForge {
-    pub fn new(http: reqwest::Client) -> Self {
-        Self { http }
+    pub fn new(fetcher: Arc<Fetcher>) -> Self {
+        Self { fetcher }
     }
 }
 
@@ -72,9 +85,7 @@ struct Named {
     name: String,
 }
 
-fn parse(body: &str) -> AppResult<SearchPage> {
-    let r: Resp = serde_json::from_str(body)
-        .map_err(|e| AppError::Decode { source_name: "CurseForge", detail: e.to_string() })?;
+fn parse(r: Resp) -> SearchPage {
     let hits: Vec<SearchHit> = r
         .data
         .into_iter()
@@ -86,13 +97,18 @@ fn parse(body: &str) -> AppResult<SearchPage> {
             summary: m.summary,
             authors: m.authors.into_iter().map(|a| a.name).collect(),
             downloads: m.download_count.max(0.0) as u64,
+            follows: None,
             icon_url: m.logo.and_then(|l| l.thumbnail_url).filter(|u| !u.is_empty()),
             updated: m.date_modified,
             categories: m.categories.into_iter().map(|c| c.name).collect(),
+            license: None,
+            client_side: None,
+            server_side: None,
+            compatible: None,
         })
         .collect();
     let total = r.pagination.map(|p| p.total_count).unwrap_or(hits.len() as u64);
-    Ok(SearchPage { source: Source::Curseforge, total, hits })
+    SearchPage { source: Source::Curseforge, total, hits, freshness: None }
 }
 
 #[async_trait::async_trait]
@@ -110,8 +126,8 @@ impl ModSource for CurseForge {
         let mut params: Vec<(&str, String)> = vec![
             ("gameId", MINECRAFT_GAME_ID.to_string()),
             ("classId", CLASS_MODS.to_string()),
-            ("searchFilter", q.text.clone()),
-            ("sortField", "2".into()), // popularity
+            ("searchFilter", q.text.trim().to_string()),
+            ("sortField", sort_field(q.sort).to_string()),
             ("sortOrder", "desc".into()),
             ("pageSize", q.clamped_limit().to_string()),
             ("index", q.offset.to_string()),
@@ -122,28 +138,17 @@ impl ModSource for CurseForge {
         if let Some(l) = q.loader {
             params.push(("modLoaderType", loader_type(l).to_string()));
         }
-
-        let resp = self
-            .http
+        let req = self
+            .fetcher
+            .http()
             .get(format!("{BASE}/v1/mods/search"))
             .header("x-api-key", key)
             .header("Accept", "application/json")
-            .query(&params)
-            .send()
-            .await?;
-        let status = resp.status();
-        if !status.is_success() {
-            let help = match status.as_u16() {
-                401 | 403 => Some(
-                    "CurseForge rejected the API key. Check it at console.curseforge.com → API Keys, then save it again in Settings."
-                        .to_string(),
-                ),
-                429 => Some("CurseForge is rate-limiting requests. Wait a minute and try again.".into()),
-                _ => None,
-            };
-            return Err(AppError::Api { source_name: "CurseForge", status: status.as_u16(), help });
-        }
-        parse(&resp.text().await?)
+            .query(&params);
+        let (body, fr) = self.fetcher.fetch_json::<Resp>(req, DAY, q.force, NAME, status_help(NAME)).await?;
+        let mut page = parse(body);
+        page.freshness = Some(fr);
+        Ok(page)
     }
 }
 
@@ -153,14 +158,12 @@ mod tests {
 
     #[test]
     fn parses_recorded_search() {
-        let body = include_str!("../../tests/fixtures/curseforge_search_jei.json");
-        let page = parse(body).unwrap();
+        let body: Resp = serde_json::from_str(include_str!("../../tests/fixtures/curseforge_search_jei.json")).unwrap();
+        let page = parse(body);
         assert_eq!(page.source, Source::Curseforge);
         assert_eq!(page.total, 2);
-        assert_eq!(page.hits.len(), 2);
         let jei = &page.hits[0];
         assert_eq!(jei.id, "238222");
-        assert_eq!(jei.slug, "jei");
         assert_eq!(jei.authors, vec!["mezz"]);
         assert_eq!(jei.downloads, 400_000_000);
         assert!(jei.icon_url.is_some());

@@ -12,6 +12,8 @@
   "dependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",
     "@tauri-apps/api": "^2.12.5",
+    "dompurify": "^3.5.0",
+    "marked": "^18.2.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

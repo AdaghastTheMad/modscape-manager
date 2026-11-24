@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type AppError, type KeyStatus, type Loader, type SearchPage, type Source } from "../api";
 import { Button, Input, Notice, Panel, Select, Slot, SourceBadge, Tooltip } from "../components/kit";
+import type { CacheStats } from "../api";
 
 const fmt = new Intl.NumberFormat(undefined, { notation: "compact" });
 
@@ -132,6 +133,24 @@ function ConnectionTest({ hasKey }: { hasKey: boolean }) {
   );
 }
 
+function CacheSection() {
+  const [stats, setStats] = useState<CacheStats | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.cacheStats().then(setStats, () => {}); }, []);
+  const mb = stats ? (stats.bytes / 1024 / 1024).toFixed(1) : "?";
+  return (
+    <Panel title="Cache">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <p className="muted" style={{ margin: 0 }}>
+          API answers are kept for 24 hours (icons for 30 days) so reopening packs is instant and rate limits never bite.
+          {stats && <> Currently {stats.entries} item{stats.entries === 1 ? "" : "s"}, {mb} MB.</>}
+        </p>
+        <Button disabled={busy} onClick={async () => { setBusy(true); try { setStats(await api.clearCache()); } finally { setBusy(false); } }}>Clear cache</Button>
+      </div>
+    </Panel>
+  );
+}
+
 export function Settings() {
   const [status, setStatus] = useState<KeyStatus | null>(null);
   const [coreError, setCoreError] = useState<AppError | null>(null);
@@ -145,6 +164,7 @@ export function Settings() {
       {coreError && <ErrorNotice error={coreError} />}
       <KeySection status={status} setStatus={setStatus} />
       <ConnectionTest hasKey={!!status?.hasKey} />
+      <CacheSection />
       <Panel title="Privacy" inset>
         <p className="muted">No telemetry, analytics or accounts. The only outside calls are to Modrinth, CurseForge and loader version
           metadata, all made by the app's core{ua && <> with the User-Agent <code>{ua}</code></>}.</p>

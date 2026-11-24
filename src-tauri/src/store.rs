@@ -1,0 +1,226 @@
+//! SQLite storage owned by the core: packs and the API response cache.
+
+use crate::error::{AppError, AppResult};
+use crate::model::Pack;
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
+use std::path::Path;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub struct Db {
+    conn: Mutex<Connection>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackSummary {
+    pub id: String,
+    pub name: String,
+    pub mc_version: String,
+    pub loader: String,
+    pub entry_count: u32,
+    pub updated_at: String,
+    pub icon: Option<String>,
+}
+
+pub struct CacheHit {
+    pub fetched_at: i64,
+    pub body: Vec<u8>,
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheStats {
+    pub entries: u64,
+    pub bytes: u64,
+}
+
+pub fn now_secs() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+fn db_err(e: rusqlite::Error) -> AppError {
+    AppError::Storage(e.to_string())
+}
+
+const MIGRATIONS: &[&str] = &[
+    // v1
+    "CREATE TABLE packs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        mc_version TEXT NOT NULL,
+        loader TEXT NOT NULL,
+        entry_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        json TEXT NOT NULL
+     );
+     CREATE TABLE api_cache (
+        key TEXT PRIMARY KEY,
+        fetched_at INTEGER NOT NULL,
+        content_type TEXT,
+        body BLOB NOT NULL
+     );",
+];
+
+impl Db {
+    pub fn open(path: &Path) -> AppResult<Self> {
+        let conn = Connection::open(path).map_err(db_err)?;
+        Self::init(conn)
+    }
+
+    #[cfg(test)]
+    pub fn memory() -> Self {
+        Self::init(Connection::open_in_memory().unwrap()).unwrap()
+    }
+
+    fn init(conn: Connection) -> AppResult<Self> {
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").map_err(db_err)?;
+        let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(db_err)?;
+        if current as usize > MIGRATIONS.len() {
+            return Err(AppError::Storage(
+                "The app's database was created by a newer version of Modpack Planner. Update the app to continue.".into(),
+            ));
+        }
+        for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+            conn.execute_batch(&format!("BEGIN; {sql}; PRAGMA user_version = {}; COMMIT;", i + 1)).map_err(db_err)?;
+        }
+        Ok(Self { conn: Mutex::new(conn) })
+    }
+
+    fn with<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> AppResult<T> {
+        let conn = self.conn.lock().map_err(|_| AppError::Storage("database lock poisoned".into()))?;
+        f(&conn).map_err(db_err)
+    }
+
+    // ---------------- packs ----------------
+    pub fn put_pack(&self, pack: &Pack) -> AppResult<()> {
+        let json = serde_json::to_string(pack).map_err(|e| AppError::Invalid(e.to_string()))?;
+        let loader = serde_json::to_value(pack.loader).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO packs (id, name, mc_version, loader, entry_count, updated_at, json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(id) DO UPDATE SET name=?2, mc_version=?3, loader=?4, entry_count=?5, updated_at=?6, json=?7",
+                params![pack.id, pack.name, pack.mc_version, loader, pack.entries.len() as i64, pack.updated_at, json],
+            )
+            .map(|_| ())
+        })
+    }
+
+    pub fn get_pack(&self, id: &str) -> AppResult<Option<Pack>> {
+        let json: Option<String> =
+            self.with(|c| c.query_row("SELECT json FROM packs WHERE id = ?1", [id], |r| r.get(0)).optional())?;
+        json.map(|j| serde_json::from_str(&j).map_err(|e| AppError::Storage(format!("Saved pack is unreadable: {e}"))))
+            .transpose()
+    }
+
+    pub fn pack_exists(&self, id: &str) -> AppResult<bool> {
+        self.with(|c| c.query_row("SELECT 1 FROM packs WHERE id = ?1", [id], |_| Ok(())).optional().map(|o| o.is_some()))
+    }
+
+    pub fn list_packs(&self) -> AppResult<Vec<PackSummary>> {
+        let rows = self.with(|c| {
+            let mut st = c.prepare(
+                "SELECT id, name, mc_version, loader, entry_count, updated_at, json_extract(json, '$.icon')
+                 FROM packs ORDER BY updated_at DESC",
+            )?;
+            let rows = st
+                .query_map([], |r| {
+                    Ok(PackSummary {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        mc_version: r.get(2)?,
+                        loader: r.get(3)?,
+                        entry_count: r.get::<_, i64>(4)? as u32,
+                        updated_at: r.get(5)?,
+                        icon: r.get(6)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })?;
+        Ok(rows)
+    }
+
+    pub fn delete_pack(&self, id: &str) -> AppResult<()> {
+        self.with(|c| c.execute("DELETE FROM packs WHERE id = ?1", [id]).map(|_| ()))
+    }
+
+    // ---------------- API cache ----------------
+    /// Returns a cached body if younger than `max_age_secs` (or any age when None).
+    pub fn cache_get(&self, key: &str, max_age_secs: Option<i64>) -> AppResult<Option<CacheHit>> {
+        let hit = self.with(|c| {
+            c.query_row("SELECT fetched_at, body, content_type FROM api_cache WHERE key = ?1", [key], |r| {
+                Ok(CacheHit { fetched_at: r.get(0)?, body: r.get(1)?, content_type: r.get(2)? })
+            })
+            .optional()
+        })?;
+        Ok(hit.filter(|h| max_age_secs.map_or(true, |m| now_secs() - h.fetched_at <= m)))
+    }
+
+    pub fn cache_put(&self, key: &str, body: &[u8], content_type: Option<&str>) -> AppResult<i64> {
+        let now = now_secs();
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO api_cache (key, fetched_at, content_type, body) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(key) DO UPDATE SET fetched_at=?2, content_type=?3, body=?4",
+                params![key, now, content_type, body],
+            )
+            .map(|_| ())
+        })?;
+        Ok(now)
+    }
+
+    pub fn cache_stats(&self) -> AppResult<CacheStats> {
+        self.with(|c| {
+            c.query_row("SELECT COUNT(*), COALESCE(SUM(LENGTH(body)), 0) FROM api_cache", [], |r| {
+                Ok(CacheStats { entries: r.get::<_, i64>(0)? as u64, bytes: r.get::<_, i64>(1)? as u64 })
+            })
+        })
+    }
+
+    pub fn cache_clear(&self) -> AppResult<()> {
+        self.with(|c| c.execute_batch("DELETE FROM api_cache; VACUUM;"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::tests::{entry, pack};
+
+    #[test]
+    fn pack_crud() {
+        let db = Db::memory();
+        let mut p = pack();
+        p.entries.insert("a".into(), entry(Some("AANobbMI"), None, "Sodium", "1"));
+        db.put_pack(&p).unwrap();
+        assert!(db.pack_exists("p1").unwrap());
+        let list = db.list_packs().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].entry_count, 1);
+        assert_eq!(list[0].loader, "neoforge");
+        assert_eq!(db.get_pack("p1").unwrap().unwrap(), p);
+        p.name = "Renamed".into();
+        db.put_pack(&p).unwrap();
+        assert_eq!(db.list_packs().unwrap()[0].name, "Renamed");
+        db.delete_pack("p1").unwrap();
+        assert!(db.get_pack("p1").unwrap().is_none());
+    }
+
+    #[test]
+    fn cache_ttl() {
+        let db = Db::memory();
+        db.cache_put("GET x", b"hello", Some("application/json")).unwrap();
+        assert_eq!(db.cache_get("GET x", Some(60)).unwrap().unwrap().body, b"hello");
+        // Backdate the entry: stale for a 60 s TTL, still available with no TTL.
+        db.with(|c| c.execute("UPDATE api_cache SET fetched_at = fetched_at - 120", [])).unwrap();
+        assert!(db.cache_get("GET x", Some(60)).unwrap().is_none());
+        assert!(db.cache_get("GET x", None).unwrap().is_some());
+        assert_eq!(db.cache_stats().unwrap().entries, 1);
+        db.cache_clear().unwrap();
+        assert_eq!(db.cache_stats().unwrap().entries, 0);
+    }
+}

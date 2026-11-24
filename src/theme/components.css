@@ -102,3 +102,17 @@
 .mc-notice--error { border-color: var(--redstone); background: #2a1414; }
 .mc-notice--ok { border-color: var(--emerald); background: #11261a; }
 .mc-notice pre { white-space: pre-wrap; font-family: var(--font-body); margin: var(--space-2) 0 0; color: var(--text); }
+
+/* ---------- Modal ---------- */
+.mc-modal-backdrop { position: fixed; inset: 0; z-index: 100; background: #000a; display: grid; place-items: center; padding: var(--space-4); }
+.mc-modal { max-width: 100%; max-height: 100%; overflow: auto; }
+
+/* ---------- Checkbox ---------- */
+.mc-check { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; user-select: none; }
+.mc-check input { appearance: none; width: 18px; height: 18px; margin: 0; background: #0b0b0e; border: 2px solid var(--stone-grey); display: grid; place-items: center; cursor: pointer; }
+.mc-check input:checked { border-color: var(--emerald); }
+.mc-check input:checked::after { content: ""; width: 8px; height: 8px; background: var(--emerald); }
+.mc-check input:focus-visible { outline: 2px solid var(--diamond); outline-offset: 2px; }
+
+/* ---------- Choice grid (radio-like buttons) ---------- */
+.mc-choice[aria-pressed="true"] { border-color: var(--tooltip-purple); background: #3a2a66; box-shadow: inset 2px 2px 0 #6a50b0, inset -2px -2px 0 #1e1240; }
