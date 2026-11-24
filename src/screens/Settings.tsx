@@ -150,9 +150,13 @@ function InterfaceSection() {
       </label>
       <label className="mc-check" style={{ marginTop: 6 }}>
         <input type="checkbox" checked={prefs.backdrop} onChange={(e) => setPref("backdrop", e.target.checked)} />
-        Deepslate-tile backdrop behind the panels
+        Dark tiled backdrop behind the panels
       </label>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>Press <kbd>?</kbd> anywhere for the keyboard shortcuts.</p>
+      <label className="mc-check" style={{ marginTop: 10 }}>
+        <input type="checkbox" checked={prefs.showKit} onChange={(e) => setPref("showKit", e.target.checked)} />
+        Developer: show the Component kit tab
+      </label>
     </Panel>
   );
 }

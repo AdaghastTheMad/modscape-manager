@@ -264,10 +264,14 @@ function TemplateEditor({ t, uses, onChanged, onDeleted }: { t: Template; uses: 
 }
 
 // ---------------------------------------------------------------- screen
+/** The template left open, kept while the app runs (switching tabs and back reopens it). */
+let openTemplate: string | null = null;
+
 export function Templates() {
   const [list, setList] = useState<Template[] | null>(null);
   const [uses, setUses] = useState<Record<string, string[]>>({});
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSelState] = useState<string | null>(openTemplate);
+  const setSel = (id: string | null) => { openTemplate = id; setSelState(id); };
   const [error, setError] = useState<AppError | null>(null);
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState<string | null>(null);
@@ -276,7 +280,8 @@ export function Templates() {
     try {
       const [l, u] = await Promise.all([api.listTemplates(), api.templateUses()]);
       setList(l); setUses(u);
-      if (select) setSel(select); else if (!sel && l[0]) setSel(l[0].id);
+      if (select) setSel(select);
+      else if (sel && !l.some((t) => t.id === sel)) setSel(null);
     } catch (e) { setError(e as AppError); }
   };
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -312,10 +317,11 @@ export function Templates() {
           {list && list.length === 0 && <div className="empty-state"><p>No templates yet. Import your config folders from an instance or a pack, or start an empty one.</p></div>}
         </div>
       </Panel>
-      <Panel title={current ? current.name : "Template"} className="pane">
+      <Panel title={current ? current.name : "Template"} className="pane"
+        actions={current && <Button size="small" onClick={() => guard(() => setSel(null))} title="Close this template (back to the list)" aria-label="Close template">✕ Close</Button>}>
         <div className="pane__body">
           {current ? <TemplateEditor t={current} uses={uses[current.id] ?? []} onChanged={(t) => { replace(t); }} onDeleted={() => { setSel(null); refresh(); }} />
-            : <div className="empty-state"><p>Pick a template, or make a new one.</p></div>}
+            : <div className="empty-state"><p>{list === null ? "Loading templates…" : "Pick a template on the left to edit it, or press New or Import."}</p></div>}
         </div>
       </Panel>
       {importing && <ImportTemplateDialog onClose={() => setImporting(false)} onDone={(t) => refresh(t.id)} />}

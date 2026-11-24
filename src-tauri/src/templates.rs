@@ -45,6 +45,10 @@ pub struct TemplateMeta {
     /// path → sha1 as of the last scan.
     #[serde(default)]
     pub files: BTreeMap<String, String>,
+    /// path → "size:modified-ns" when it was hashed, so unchanged files
+    /// aren't re-read on every scan (a cache; safe to delete).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, String>,
     #[serde(default)]
     pub created_at: String,
     #[serde(default)]
@@ -239,13 +243,25 @@ impl Library {
         let dir = self.files_dir(id)?;
         let files = walk(&dir)?;
         let mut hashes = BTreeMap::new();
-        for (rel, p, _) in &files {
-            hashes.insert(rel.clone(), sha1_file(p)?);
+        let mut stamps = BTreeMap::new();
+        for (rel, p, size) in &files {
+            let modified = std::fs::metadata(p).ok().and_then(|md| md.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+            let stamp = format!("{size}:{modified}");
+            let h = match (m.stamps.get(rel), m.files.get(rel)) {
+                (Some(s), Some(h)) if *s == stamp && modified != 0 => h.clone(),
+                _ => sha1_file(p)?,
+            };
+            hashes.insert(rel.clone(), h);
+            stamps.insert(rel.clone(), stamp);
         }
         if hashes != m.files {
             m.files = hashes;
+            m.stamps = stamps;
             m.version += 1;
             m.updated_at = now.to_string();
+            self.write_meta(&m)?;
+        } else if stamps != m.stamps {
+            m.stamps = stamps; // same contents, new timestamps: just refresh the cache
             self.write_meta(&m)?;
         }
         let mut folders = BTreeSet::new();
@@ -305,6 +321,7 @@ impl Library {
             description: description.trim().into(),
             version: 1,
             files: BTreeMap::new(),
+            stamps: BTreeMap::new(),
             created_at: now.into(),
             updated_at: now.into(),
         })?;

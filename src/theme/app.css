@@ -181,7 +181,7 @@
 .shortcuts td { padding: 3px 6px 3px 0; vertical-align: top; }
 .shortcuts__keys { white-space: nowrap; width: 1%; }
 kbd { display: inline-block; min-width: 1.6em; padding: 0 4px; margin-right: 2px; text-align: center; font: 12px/1.5 var(--font-body); color: var(--text); background: var(--slot-fill); border: 1px solid #000; box-shadow: inset -1px -1px 0 var(--stone-shadow), inset 1px 1px 0 var(--stone-grey); }
-/* Deepslate-ish tiles drawn in CSS (no game textures): seams every 32 px, faint streaks. */
+/* Dark tiles drawn in CSS (no game textures): seams every 32 px, faint streaks. */
 .app--backdrop .app-main {
   background-color: #19191f;
   background-image:

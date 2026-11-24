@@ -7,10 +7,12 @@ export interface Prefs {
   syncGrouping: boolean;
   /** Click sound on buttons. Off by default. */
   clickSound: boolean;
-  /** Deepslate-tile backdrop behind the panels. */
+  /** Dark tiled backdrop behind the panels. */
   backdrop: boolean;
+  /** Developer: show the Component kit tab. Off by default. */
+  showKit: boolean;
 }
-const DEFAULTS: Prefs = { syncGrouping: false, clickSound: false, backdrop: true };
+const DEFAULTS: Prefs = { syncGrouping: false, clickSound: false, backdrop: true, showKit: false };
 
 function read(): Prefs {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return DEFAULTS; }

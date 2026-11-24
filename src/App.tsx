@@ -48,7 +48,7 @@ export default function App() {
           { id: "packs", label: openPack ? "Workspace" : "Packs" },
           { id: "payloads", label: "Payloads" },
           { id: "templates", label: "Templates" },
-          { id: "kit", label: "Component kit" },
+          ...(prefs.showKit ? [{ id: "kit" as const, label: "Component kit" }] : []),
           { id: "settings", label: "Settings" },
         ]} />
         <span className="grow" />
@@ -60,7 +60,7 @@ export default function App() {
           : <Packs onOpen={setOpenPack} />)}
         {screen === "payloads" && <Payloads />}
         {screen === "templates" && <Templates />}
-        {screen === "kit" && <Kit />}
+        {screen === "kit" && prefs.showKit && <Kit />}
         {screen === "settings" && <Settings />}
       </main>
       {prompt}

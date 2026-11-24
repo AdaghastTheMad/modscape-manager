@@ -625,8 +625,9 @@ fn now() -> String {
     store::now_iso()
 }
 
+/// Async (off the main thread): scanning re-checks every template's files.
 #[tauri::command]
-fn list_templates(state: St<'_>) -> AppResult<Vec<Tpl>> {
+async fn list_templates(state: St<'_>) -> AppResult<Vec<Tpl>> {
     state.templates.list(&now())
 }
 
@@ -710,7 +711,7 @@ async fn import_template(state: St<'_>, path: String, name: String, keep: Vec<St
 }
 
 #[tauri::command]
-fn template_overview(state: St<'_>, pack: Pack) -> AppResult<templates::Overview> {
+async fn template_overview(state: St<'_>, pack: Pack) -> AppResult<templates::Overview> {
     state.templates.overview(&pack, &now())
 }
 
@@ -722,7 +723,7 @@ fn template_applied_ref(state: St<'_>, id: String) -> AppResult<model::AppliedRe
 
 /// Template id → names of the packs that use it.
 #[tauri::command]
-fn template_uses(state: St<'_>) -> AppResult<std::collections::BTreeMap<String, Vec<String>>> {
+async fn template_uses(state: St<'_>) -> AppResult<std::collections::BTreeMap<String, Vec<String>>> {
     template_uses_impl(&state.db)
 }
 
