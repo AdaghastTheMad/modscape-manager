@@ -70,9 +70,21 @@ export function newPack(p: Pick<Pack, "name" | "mcVersion" | "loader" | "loaderV
   };
 }
 
+/** Resolver id for a hit: Modrinth ids as-is, CurseForge ids "cf:"-prefixed. */
+export const catalogId = (source: Source, id: string) => (source === "curseforge" ? `cf:${id}` : id);
+
+/** Resolver id of an entry on its preferred site. */
+export function entryCatalogId(e: PackEntry): string | null {
+  if (e.ref.preferred === "curseforge") return e.ref.curseforgeId != null ? `cf:${e.ref.curseforgeId}` : null;
+  return e.ref.modrinthId ?? null;
+}
+
 export function entryFromHit(h: SearchHit): PackEntry {
+  const ref: ModRef = h.source === "modrinth" ? { modrinthId: h.id, preferred: "modrinth" } : { curseforgeId: Number(h.id), preferred: "curseforge" };
+  if (h.also?.source === "modrinth") ref.modrinthId = h.also.id;
+  if (h.also?.source === "curseforge") ref.curseforgeId = Number(h.also.id);
   return {
-    ref: h.source === "modrinth" ? { modrinthId: h.id, preferred: "modrinth" } : { curseforgeId: Number(h.id), preferred: "curseforge" },
+    ref,
     kind: "mod", reason: "user", pulledInBy: [], payloadIds: [], tags: [], addedAt: nowIso(),
     display: {
       name: h.name, slug: h.slug, summary: h.summary, iconUrl: h.iconUrl, categories: h.categories, clientSide: h.clientSide,
@@ -81,13 +93,36 @@ export function entryFromHit(h: SearchHit): PackEntry {
   };
 }
 
-/** Finds the entry key holding this project, if any. */
+/** Finds the entry key holding this project (on either site), if any. */
 export function findEntry(pack: Pack, source: Source, id: string): string | undefined {
   return Object.keys(pack.entries).find((k) => {
     const r = pack.entries[k].ref;
-    return source === "modrinth" ? r.modrinthId === id : String(r.curseforgeId) === id;
+    return source === "modrinth" ? r.modrinthId === id : r.curseforgeId != null && String(r.curseforgeId) === id;
   });
 }
+
+/** Entry for a resolver id ("cf:<n>" for CurseForge, otherwise Modrinth). */
+export const findByCatalogId = (pack: Pack, id: string) =>
+  id.startsWith("cf:") ? findEntry(pack, "curseforge", id.slice(3)) : findEntry(pack, "modrinth", id);
+
+/** Entry for a search hit, checking its other-site twin too. */
+export const findHit = (pack: Pack, h: SearchHit) => findEntry(pack, h.source, h.id) ?? (h.also ? findEntry(pack, h.also.source, h.also.id) : undefined);
+
+/** Switches which site an entry uses. Its pin belongs to the old site, so it's cleared. */
+export function withSource(e: PackEntry, source: Source): PackEntry {
+  const has = source === "modrinth" ? !!e.ref.modrinthId : e.ref.curseforgeId != null;
+  if (!has || e.ref.preferred === source) return e;
+  return { ...e, ref: { ...e.ref, preferred: source }, fileId: undefined };
+}
+
+/** Applies a pack-wide source preference to every entry linked on both sites. */
+export function applyPreference(p: Pack, pref: SourcePreference): Pack {
+  if (pref === "mixed") return { ...p, sourcePreference: pref };
+  const entries = Object.fromEntries(Object.entries(p.entries).map(([k, e]) => [k, withSource(e, pref)]));
+  return { ...p, sourcePreference: pref, entries };
+}
+
+export const preferredSource = (p: Pack): Source => (p.sourcePreference === "curseforge" ? "curseforge" : "modrinth");
 
 /**
  * Library detection. Modrinth tags are too coarse to rely on alone (JEI and EMI
@@ -116,6 +151,11 @@ export function applyPlan(p: Pack, plan: AddPlan): Pack {
     if (e && !e.pulledInBy.includes(l.parent)) entries[l.key] = { ...e, pulledInBy: [...e.pulledInBy, l.parent] };
   }
   if (plan.promote && entries[plan.promote]) entries[plan.promote] = { ...entries[plan.promote], reason: "user" };
+  for (const l of plan.idLinks ?? []) {
+    const e = entries[l.key];
+    if (!e) continue;
+    entries[l.key] = { ...e, ref: { ...e.ref, ...(l.modrinthId ? { modrinthId: l.modrinthId } : {}), ...(l.curseforgeId != null ? { curseforgeId: l.curseforgeId } : {}) } };
+  }
   return { ...p, entries };
 }
 

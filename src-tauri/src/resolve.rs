@@ -7,7 +7,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::model::{ChannelPolicy, EntryDisplay, EntryKind, ModRef, Pack, PackEntry, Reason};
-use crate::sources::{Loader, Source, LOADER_SLUGS};
+use crate::sources::{curseforge, norm, Loader, Source, LOADER_SLUGS};
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -71,6 +71,9 @@ pub struct Version {
     pub dependencies: Vec<Dep>,
     #[serde(default)]
     pub files: Vec<VFile>,
+    /// CurseForge file whose author blocks third-party downloads.
+    #[serde(default)]
+    pub distribution_blocked: bool,
 }
 fn release() -> String {
     "release".into()
@@ -180,6 +183,40 @@ pub trait Catalog: Send + Sync {
     async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<ProjectInfo>>;
 }
 
+/// Routes `cf:` ids to CurseForge and everything else to Modrinth.
+pub struct Multi<'a> {
+    pub modrinth: &'a dyn Catalog,
+    pub curseforge: &'a dyn Catalog,
+}
+
+impl Multi<'_> {
+    fn pick(&self, id: &str) -> &dyn Catalog {
+        if id.starts_with(curseforge::PREFIX) { self.curseforge } else { self.modrinth }
+    }
+}
+
+#[async_trait::async_trait]
+impl Catalog for Multi<'_> {
+    async fn versions(&self, project_id: &str, mc: &str, loader: Loader, force: bool) -> AppResult<Vec<Version>> {
+        self.pick(project_id).versions(project_id, mc, loader, force).await
+    }
+    async fn version(&self, id: &str, force: bool) -> AppResult<Option<Version>> {
+        self.pick(id).version(id, force).await
+    }
+    async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<ProjectInfo>> {
+        let (cf, mr): (Vec<String>, Vec<String>) = ids.iter().cloned().partition(|i| i.starts_with(curseforge::PREFIX));
+        let mut out = Vec::new();
+        if !mr.is_empty() {
+            out.extend(self.modrinth.projects(&mr, force).await?);
+        }
+        if !cf.is_empty() {
+            // Without a CurseForge key, CurseForge names just stay unknown.
+            out.extend(self.curseforge.projects(&cf, force).await.unwrap_or_default());
+        }
+        Ok(out)
+    }
+}
+
 // ================================================================= reports
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -234,6 +271,9 @@ pub enum Fix {
     Unpin { key: String },
     #[serde(rename_all = "camelCase")]
     PinTo { key: String, version_id: String, version_number: String },
+    /// Switch an entry that's linked on both sites to the other one.
+    #[serde(rename_all = "camelCase")]
+    UseSource { key: String, source: Source },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -280,10 +320,25 @@ fn loader_name(l: Loader) -> &'static str {
     }
 }
 
-/// project id → entry key, including ids provided by stand-in projects.
+/// Catalog id the resolver uses for an entry (preferred site) and its pin.
+/// CurseForge ids are `cf:`-prefixed; pins may be stored with or without it.
+pub fn target(e: &PackEntry) -> Option<(String, Option<String>)> {
+    match e.mod_ref.preferred {
+        Source::Modrinth => e.mod_ref.modrinth_id.clone().map(|id| (id, e.file_id.clone())),
+        Source::Curseforge => e.mod_ref.curseforge_id.map(|id| {
+            let pin = e.file_id.as_ref().map(|f| if f.starts_with(curseforge::PREFIX) { f.clone() } else { format!("{}{f}", curseforge::PREFIX) });
+            (curseforge::cf_id(id), pin)
+        }),
+    }
+}
+
+/// project id (either site) → entry key, including ids provided by stand-in projects.
 fn pack_index(pack: &Pack) -> HashMap<String, String> {
     let mut m = HashMap::new();
     for (k, e) in &pack.entries {
+        if let Some(id) = e.mod_ref.curseforge_id {
+            m.insert(curseforge::cf_id(id), k.clone());
+        }
         if let Some(id) = &e.mod_ref.modrinth_id {
             m.insert(id.clone(), k.clone());
             for (provider, provides) in PROVIDES {
@@ -360,17 +415,11 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
     let mut issues: Vec<Issue> = Vec::new();
     let mut complete = true;
 
-    // 1. Pick a file for every Modrinth entry, in parallel.
-    let targets: Vec<(String, String, Option<String>)> = pack
-        .entries
-        .iter()
-        .filter_map(|(k, e)| match (e.mod_ref.preferred, &e.mod_ref.modrinth_id) {
-            (Source::Modrinth, Some(id)) => Some((k.clone(), id.clone(), e.file_id.clone())),
-            _ => None,
-        })
-        .collect();
+    // 1. Pick a file for every entry (on its preferred site), in parallel.
+    let targets: Vec<(String, String, Option<String>)> =
+        pack.entries.iter().filter_map(|(k, e)| target(e).map(|(pid, pin)| (k.clone(), pid, pin))).collect();
     if targets.len() < pack.entries.len() {
-        complete = false; // CurseForge-only entries are checked from milestone 4.
+        complete = false;
     }
     let selected: Vec<(String, String, AppResult<Selected>)> = stream::iter(targets)
         .map(|(k, pid, pin)| async move {
@@ -441,6 +490,21 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
                     None => {}
                     Some(mut v) => {
                         rep.file = Some(v.file_info(sel.pinned));
+                        if v.distribution_blocked {
+                            let other = e.mod_ref.modrinth_id.is_some();
+                            issues.push(Issue {
+                                id: format!("cf_distribution:{key}"),
+                                severity: Severity::Warning,
+                                kind: "cf_distribution",
+                                entry_key: Some(key.clone()),
+                                other_key: None,
+                                message: format!(
+                                    "{name}'s author blocks third-party downloads on CurseForge, so launchers will ask you to download it by hand.{}",
+                                    if other { " It's also on Modrinth." } else { "" }
+                                ),
+                                fix: other.then(|| Fix::UseSource { key: key.clone(), source: Source::Modrinth }),
+                            });
+                        }
                         resolve_dep_projects(cat, &mut v.dependencies, force, &mut vcache).await;
                         if !sel.pinned {
                             if let Some(age) = iso_age_secs(&v.date_published, now) {
@@ -690,8 +754,52 @@ pub struct AddPlan {
     pub links: Vec<Link>,
     /// Existing dependency entry the user has now added on purpose.
     pub promote: Option<String>,
+    /// Existing entries that turned out to be the same mod as a dependency on
+    /// the other site: record that site's id on them instead of adding a duplicate.
+    pub id_links: Vec<IdLink>,
     pub suggestions: Vec<Suggestion>,
     pub notes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct IdLink {
+    pub key: String,
+    pub modrinth_id: Option<String>,
+    pub curseforge_id: Option<u64>,
+}
+
+/// Builds a ModRef for a catalog id (`cf:`-prefixed → CurseForge), plus an optional other-site id.
+pub fn mod_ref_for(pid: &str, alt: Option<&str>) -> ModRef {
+    let mut r = match curseforge::parse_id(pid) {
+        Some(n) => ModRef { modrinth_id: None, curseforge_id: Some(n), preferred: Source::Curseforge },
+        None => ModRef { modrinth_id: Some(pid.to_string()), curseforge_id: None, preferred: Source::Modrinth },
+    };
+    if let Some(a) = alt {
+        match curseforge::parse_id(a) {
+            Some(n) if r.curseforge_id.is_none() => r.curseforge_id = Some(n),
+            None if r.modrinth_id.is_none() && !a.is_empty() => r.modrinth_id = Some(a.to_string()),
+            _ => {}
+        }
+    }
+    r
+}
+
+/// An existing entry that is this project under its other-site id: same slug
+/// and same name, and no id of its own on this project's site.
+fn same_mod_elsewhere(pack: &Pack, pid: &str, info: &ProjectInfo) -> Option<String> {
+    let is_cf = curseforge::parse_id(pid).is_some();
+    let (slug, name) = (norm(&info.slug), norm(&info.title));
+    if slug.is_empty() || name.is_empty() {
+        return None;
+    }
+    pack.entries
+        .iter()
+        .find(|(_, e)| {
+            let free = if is_cf { e.mod_ref.curseforge_id.is_none() } else { e.mod_ref.modrinth_id.is_none() };
+            free && norm(&e.display.slug) == slug && norm(&e.display.name) == name
+        })
+        .map(|(k, _)| k.clone())
 }
 
 struct Node {
@@ -711,6 +819,7 @@ pub async fn plan_add(
     project_id: &str,
     pin_version: Option<&str>,
     for_parent: Option<&str>,
+    alt_id: Option<&str>,
     cat: &dyn Catalog,
     force: bool,
     now_iso: &str,
@@ -723,13 +832,13 @@ pub async fn plan_add(
 
     // Only a parent that's really in the pack counts.
     let for_parent = for_parent.filter(|k| pack.entries.contains_key(*k)).map(String::from);
-    if let Some(k) = index.get(project_id) {
+    if let Some(k) = index.get(project_id).or_else(|| alt_id.and_then(|a| index.get(a))) {
         if let Some(parent) = for_parent {
             let links = if pack.entries[k].pulled_in_by.contains(&parent) { vec![] } else { vec![Link { key: k.clone(), parent }] };
-            return Ok(AddPlan { root_key: k.clone(), additions: vec![], links, promote: None, suggestions: vec![], notes });
+            return Ok(AddPlan { root_key: k.clone(), additions: vec![], links, promote: None, id_links: vec![], suggestions: vec![], notes });
         }
         let promote = (pack.entries[k].reason != Reason::User).then(|| k.clone());
-        return Ok(AddPlan { root_key: k.clone(), additions: vec![], links: vec![], promote, suggestions: vec![], notes });
+        return Ok(AddPlan { root_key: k.clone(), additions: vec![], links: vec![], promote, id_links: vec![], suggestions: vec![], notes });
     }
 
     let mut queue: VecDeque<(String, Option<String>, Option<String>)> = VecDeque::from([(project_id.to_string(), for_parent.clone(), pin_version.map(String::from))]);
@@ -740,8 +849,25 @@ pub async fn plan_add(
     let mut vcache: HashMap<String, Option<Version>> = HashMap::new();
     let mut hit_cap = false;
     let mut no_build: Vec<String> = Vec::new();
+    let mut infos: HashMap<String, ProjectInfo> = HashMap::new();
+    let mut id_links: Vec<IdLink> = Vec::new();
+    let mut index = index;
 
     while let Some((pid, parent, pin)) = queue.pop_front() {
+        // A dependency from the other site may already be in the pack under its other id.
+        if !index.contains_key(&pid) && !planned.contains_key(&pid) && parent.is_some() {
+            if let Some(info) = cat.projects(std::slice::from_ref(&pid), force).await?.into_iter().next() {
+                if let Some(k) = same_mod_elsewhere(pack, &pid, &info) {
+                    let (m, c) = match curseforge::parse_id(&pid) {
+                        Some(n) => (None, Some(n)),
+                        None => (Some(pid.clone()), None),
+                    };
+                    id_links.push(IdLink { key: k.clone(), modrinth_id: m, curseforge_id: c });
+                    index.insert(pid.clone(), k);
+                }
+                infos.insert(pid.clone(), info);
+            }
+        }
         if let Some(existing) = index.get(&pid) {
             if let Some(p) = parent {
                 let l = Link { key: existing.clone(), parent: p };
@@ -803,17 +929,19 @@ pub async fn plan_add(
         notes.push(format!("Stopped after adding {MAX_NEW_ENTRIES} mods; the rest show up as missing dependencies."));
     }
 
-    // Display info for everything new plus suggestion targets.
-    let mut ids: Vec<String> = nodes.iter().map(|n| n.project_id.clone()).collect();
+    // Display info for everything new plus suggestion targets (some already fetched above).
+    let mut ids: Vec<String> = nodes.iter().map(|n| n.project_id.clone()).filter(|id| !infos.contains_key(id)).collect();
     let dismissed: HashSet<&String> = pack.dismissed_suggestions.iter().collect();
     for (o, _) in &optional {
-        if !index.contains_key(o) && !planned.contains_key(o) && !dismissed.contains(o) && !ids.contains(o) {
+        if !index.contains_key(o) && !planned.contains_key(o) && !dismissed.contains(o) && !ids.contains(o) && !infos.contains_key(o) {
             ids.push(o.clone());
         }
     }
-    let infos: HashMap<String, ProjectInfo> = cat.projects(&ids, force).await?.into_iter().map(|p| (p.id.clone(), p)).collect();
+    if !ids.is_empty() {
+        infos.extend(cat.projects(&ids, force).await?.into_iter().map(|p| (p.id.clone(), p)));
+    }
     if !infos.contains_key(project_id) {
-        return Err(AppError::Invalid("That project couldn't be found on Modrinth.".into()));
+        return Err(AppError::Invalid("That project couldn't be found.".into()));
     }
 
     for pid in &no_build {
@@ -824,7 +952,7 @@ pub async fn plan_add(
     // Dependencies that don't exist on Modrinth any more are reported, not added.
     let ghosts: HashSet<String> = nodes.iter().filter(|n| !n.is_root && !infos.contains_key(&n.project_id)).map(|n| n.key.clone()).collect();
     for n in nodes.iter().filter(|n| ghosts.contains(&n.key)) {
-        notes.push(format!("A required dependency ({}) no longer exists on Modrinth.", n.project_id));
+        notes.push(format!("A required dependency ({}) no longer exists.", n.project_id));
     }
     let mut additions = Vec::new();
     for n in nodes.iter().filter(|n| !ghosts.contains(&n.key)) {
@@ -832,8 +960,9 @@ pub async fn plan_add(
         additions.push(Addition {
             key: n.key.clone(),
             entry: PackEntry {
-                mod_ref: ModRef { modrinth_id: Some(n.project_id.clone()), curseforge_id: None, preferred: Source::Modrinth },
-                file_id: n.file_id.clone(),
+                mod_ref: mod_ref_for(&n.project_id, if n.is_root { alt_id } else { None }),
+                // Pins are stored without the `cf:` prefix.
+                file_id: n.file_id.as_ref().map(|f| f.strip_prefix(curseforge::PREFIX).unwrap_or(f).to_string()),
                 kind: EntryKind::Mod,
                 reason: if n.is_root && for_parent.is_none() { Reason::User } else { Reason::Dependency },
                 pulled_in_by: n.parents.iter().filter(|p| !ghosts.contains(*p)).cloned().collect(),
@@ -869,7 +998,7 @@ pub async fn plan_add(
             .push(by);
     }
 
-    Ok(AddPlan { root_key: nodes[0].key.clone(), additions, links, promote: None, suggestions: suggestions.into_values().collect(), notes })
+    Ok(AddPlan { root_key: nodes[0].key.clone(), additions, links, promote: None, id_links, suggestions: suggestions.into_values().collect(), notes })
 }
 
 // ================================================================== tests
@@ -903,7 +1032,11 @@ mod tests {
     impl Fixture {
         fn load() -> Self {
             let mut f = Fixture { versions: HashMap::new(), by_id: HashMap::new(), projects: HashMap::new(), slugs: HashMap::new(), calls: Mutex::new(0) };
-            for text in [include_str!("../tests/fixtures/resolver/modrinth.json"), include_str!("../tests/fixtures/resolver/synthetic.json")] {
+            for text in [
+                include_str!("../tests/fixtures/resolver/modrinth.json"),
+                include_str!("../tests/fixtures/resolver/synthetic.json"),
+                include_str!("../tests/fixtures/resolver/curseforge.json"),
+            ] {
                 let b: Bundle = serde_json::from_str(text).expect("fixture");
                 for (k, vs) in b.versions {
                     for v in &vs {
@@ -920,8 +1053,13 @@ mod tests {
                 }
                 f.slugs.extend(b.slugs);
             }
+            // Slugs resolve to the Modrinth copy when both sites share one.
             for (id, p) in &f.projects {
-                f.slugs.entry(p.slug.clone()).or_insert_with(|| id.clone());
+                if id.starts_with(curseforge::PREFIX) {
+                    f.slugs.entry(p.slug.clone()).or_insert_with(|| id.clone());
+                } else {
+                    f.slugs.insert(p.slug.clone(), id.clone());
+                }
             }
             f
         }
@@ -979,10 +1117,19 @@ mod tests {
         if let Some(k) = plan.promote {
             pack.entries.get_mut(&k).unwrap().reason = Reason::User;
         }
+        for l in plan.id_links {
+            let e = pack.entries.get_mut(&l.key).unwrap();
+            if l.modrinth_id.is_some() {
+                e.mod_ref.modrinth_id = l.modrinth_id;
+            }
+            if l.curseforge_id.is_some() {
+                e.mod_ref.curseforge_id = l.curseforge_id;
+            }
+        }
     }
 
     async fn add(f: &Fixture, pack: &mut Pack, slug: &str, keys: &mut impl FnMut() -> String) -> Vec<String> {
-        let plan = plan_add(pack, &f.id(slug), None, None, f, false, "2026-11-24T00:00:00Z", keys).await.unwrap();
+        let plan = plan_add(pack, &f.id(slug), None, None, None, f, false, "2026-11-24T00:00:00Z", keys).await.unwrap();
         let notes = plan.notes.clone();
         apply(pack, plan);
         notes
@@ -1061,7 +1208,7 @@ mod tests {
     fn adding_pulls_in_required_and_suggests_optional() {
         let f = Fixture::load();
         let mut pack = pack_for("1.21.1", Loader::Fabric);
-        let plan = block(plan_add(&pack, &f.id("sodium-extra"), None, None, &f, false, "t", counter())).unwrap();
+        let plan = block(plan_add(&pack, &f.id("sodium-extra"), None, None, None, &f, false, "t", counter())).unwrap();
         let root = &plan.additions[0];
         assert_eq!(root.entry.reason, Reason::User);
         let sodium = plan.additions.iter().find(|a| a.entry.mod_ref.modrinth_id.as_deref() == Some(f.id("sodium").as_str())).expect("sodium pulled in");
@@ -1072,7 +1219,7 @@ mod tests {
         assert!(sugg.iter().any(|n| n.contains("Iris")), "{sugg:?}");
         apply(&mut pack, plan);
         // Adding again is a no-op.
-        let again = block(plan_add(&pack, &f.id("sodium-extra"), None, None, &f, false, "t", counter())).unwrap();
+        let again = block(plan_add(&pack, &f.id("sodium-extra"), None, None, None, &f, false, "t", counter())).unwrap();
         assert!(again.additions.is_empty() && again.promote.is_none());
     }
 
@@ -1088,7 +1235,7 @@ mod tests {
         let sodium = &pack.entries[&key_of(&pack, &f, "sodium")];
         assert_eq!(sodium.pulled_in_by.len(), 2);
         // Adding a mod that's already a dependency promotes it to user-added.
-        let plan = block(plan_add(&pack, &f.id("sodium"), None, None, &f, false, "t", counter())).unwrap();
+        let plan = block(plan_add(&pack, &f.id("sodium"), None, None, None, &f, false, "t", counter())).unwrap();
         assert_eq!(plan.promote.as_deref(), Some(key_of(&pack, &f, "sodium").as_str()));
     }
 
@@ -1131,7 +1278,7 @@ mod tests {
     fn circular_required_deps_terminate() {
         let f = Fixture::load();
         let mut pack = pack_for("1.21.1", Loader::Fabric);
-        let plan = block(plan_add(&pack, "cycA0000", None, None, &f, false, "t", counter())).unwrap();
+        let plan = block(plan_add(&pack, "cycA0000", None, None, None, &f, false, "t", counter())).unwrap();
         assert_eq!(plan.additions.len(), 2);
         let a = &plan.additions[0];
         let b = &plan.additions[1];
@@ -1196,7 +1343,7 @@ mod tests {
         assert_eq!(i.fix, Some(Fix::AddProject { project_id: f.id("sodium"), name: "Sodium".into(), pin_version: None, for_key: Some(key_of(&pack, &f, "sodium-extra")) }));
         // Applying that fix records Sodium as Sodium Extra's dependency, not a user pick.
         let ek = key_of(&pack, &f, "sodium-extra");
-        let plan = block(plan_add(&pack, &f.id("sodium"), None, Some(&ek), &f, false, "t", counter())).unwrap();
+        let plan = block(plan_add(&pack, &f.id("sodium"), None, Some(&ek), None, &f, false, "t", counter())).unwrap();
         assert_eq!(plan.additions[0].entry.reason, Reason::Dependency);
         assert_eq!(plan.additions[0].entry.pulled_in_by, vec![ek.clone()]);
         assert!(a.suggestions.iter().any(|s| s.name.contains("Iris")));
@@ -1298,15 +1445,79 @@ mod tests {
     }
 
     #[test]
-    fn curseforge_entries_make_analysis_incomplete() {
+    fn curseforge_mods_resolve_and_link_across_sites() {
         let f = Fixture::load();
-        let mut pack = pack_for("1.21.1", Loader::Fabric);
-        let mut e = crate::model::tests::entry(None, Some(238222), "JEI", "1");
-        e.mod_ref.preferred = Source::Curseforge;
-        pack.entries.insert("cf".into(), e);
+        let mut pack = pack_for("1.21.1", Loader::Neoforge);
+        let mut keys = counter();
+        block(add(&f, &mut pack, "architectury-api", &mut keys)); // Modrinth copy
+        let arch = key_of(&pack, &f, "architectury-api");
+        assert_eq!(pack.entries[&arch].mod_ref.curseforge_id, None);
+
+        let plan = block(plan_add(&pack, "cf:1001", None, None, None, &f, false, "t", &mut keys)).unwrap();
+        let names: Vec<&str> = plan.additions.iter().map(|a| a.entry.display.name.as_str()).collect();
+        assert_eq!(names, vec!["CF Tech Mod", "CF Only Lib"], "Architectury must not be added twice");
+        let root = &plan.additions[0];
+        assert_eq!(root.entry.mod_ref.curseforge_id, Some(1001));
+        assert_eq!(root.entry.mod_ref.preferred, Source::Curseforge);
+        assert_eq!(plan.id_links, vec![IdLink { key: arch.clone(), modrinth_id: None, curseforge_id: Some(2001) }]);
+        assert!(plan.links.contains(&Link { key: arch.clone(), parent: root.key.clone() }));
+        let root_key = root.key.clone();
+        apply(&mut pack, plan);
+        assert_eq!(pack.entries[&arch].mod_ref.curseforge_id, Some(2001));
+
         let a = block(analyze(&pack, &f, false, NOW));
-        assert!(!a.complete);
-        assert!(!a.entries["cf"].checked);
+        assert!(a.complete, "{:?}", a.issues);
+        assert!(!kinds(&a).contains(&"missing_dependency"), "{:?}", a.issues);
+        assert_eq!(a.entries[&arch].required_by, vec![root_key.clone()]);
+        let dist = a.issues.iter().find(|i| i.kind == "cf_distribution").expect("distribution warning");
+        assert_eq!(dist.fix, None, "no Modrinth copy to switch to");
+        assert_eq!(a.entries[&root_key].file.as_ref().unwrap().version_id, "cf:9001");
+
+        // Once a Modrinth copy is linked, the warning offers to switch.
+        pack.entries.get_mut(&root_key).unwrap().mod_ref.modrinth_id = Some("someMRid".into());
+        let a = block(analyze(&pack, &f, false, NOW));
+        let dist = a.issues.iter().find(|i| i.kind == "cf_distribution").unwrap();
+        assert_eq!(dist.fix, Some(Fix::UseSource { key: root_key.clone(), source: Source::Modrinth }));
+
+        // A CurseForge pin stored without the prefix still resolves.
+        pack.entries.get_mut(&root_key).unwrap().file_id = Some("9001".into());
+        let a = block(analyze(&pack, &f, false, NOW));
+        assert!(a.entries[&root_key].file.as_ref().unwrap().pinned);
+        assert!(!kinds(&a).contains(&"pin_missing"));
+    }
+
+    /// Runs on real CurseForge data once `cargo run --example record_cf_fixtures` has recorded it.
+    #[test]
+    fn recorded_curseforge_jei_resolves() {
+        let f = Fixture::load();
+        let Some(vs) = f.versions.get("cf:238222|1.21.1") else {
+            eprintln!("(no recorded CurseForge data yet; skipping)");
+            return;
+        };
+        assert!(!vs.is_empty());
+        let mut pack = pack_for("1.21.1", Loader::Neoforge);
+        let mut keys = counter();
+        let plan = block(plan_add(&pack, "cf:238222", None, None, None, &f, false, "t", &mut keys)).unwrap();
+        assert_eq!(plan.additions[0].entry.mod_ref.curseforge_id, Some(238222));
+        apply(&mut pack, plan);
+        let a = block(analyze(&pack, &f, false, NOW));
+        assert!(a.complete, "{:?}", a.issues);
+        assert!(!kinds(&a).contains(&"no_build"), "{:?}", a.issues);
+        assert!(!kinds(&a).contains(&"missing_dependency"), "{:?}", a.issues);
+    }
+
+    #[test]
+    fn alt_id_links_both_sites_on_add() {
+        let f = Fixture::load();
+        let pack = pack_for("1.21.1", Loader::Neoforge);
+        let plan = block(plan_add(&pack, "lhGA9TYQ", None, None, Some("cf:2001"), &f, false, "t", counter())).unwrap();
+        let r = &plan.additions[0].entry.mod_ref;
+        assert_eq!((r.modrinth_id.as_deref(), r.curseforge_id, r.preferred), (Some("lhGA9TYQ"), Some(2001), Source::Modrinth));
+        // Adding the CurseForge copy of something already in the pack is a no-op.
+        let mut pack = pack;
+        apply(&mut pack, plan);
+        let again = block(plan_add(&pack, "cf:2001", None, None, None, &f, false, "t", counter())).unwrap();
+        assert!(again.additions.is_empty());
     }
 
     #[test]

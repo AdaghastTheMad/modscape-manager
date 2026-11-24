@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, type Analysis, type AppError, type DepLink, type FileInfo, type Fix, type ProjectDetails, type SearchHit } from "../../api";
+import { api, type Analysis, type AppError, type Candidate, type DepLink, type FileInfo, type Fix, type ProjectDetails, type SearchHit, type Source } from "../../api";
 import { Button, ErrorNotice, ModIcon, Notice, Panel, SourceBadge } from "../../components/kit";
 import { Markdown } from "../../components/Markdown";
 import { fmtCompact, fmtDate } from "../../hooks";
-import { entryName, findEntry, isLibrary, loaderLabel, prettyCategory, type Pack } from "../../model";
+import { entryCatalogId, entryName, findHit, isLibrary, loaderLabel, prettyCategory, type Pack } from "../../model";
 import { fixLabel } from "./PackList";
 
 export type Selection = { kind: "hit"; hit: SearchHit } | { kind: "entry"; key: string } | null;
@@ -31,6 +31,60 @@ function DepList({ title, deps, pack, onSelect, onAdd, addLabel }: {
   );
 }
 
+const siteName = (s: Source) => (s === "modrinth" ? "Modrinth" : "CurseForge");
+
+function Sites({ pack, entryKey, onUseSource, onLink, onUnlink }: {
+  pack: Pack; entryKey: string; onUseSource: (k: string, s: Source) => void; onLink: (k: string, c: Candidate) => void; onUnlink: (k: string, s: Source) => void;
+}) {
+  const e = pack.entries[entryKey];
+  const [cands, setCands] = useState<Candidate[] | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setCands(null); setError(null); }, [entryKey]);
+  const both = !!e.ref.modrinthId && e.ref.curseforgeId != null;
+  const missing: Source = e.ref.modrinthId ? "curseforge" : "modrinth";
+  const find = async () => {
+    setBusy(true); setError(null);
+    try { setCands(await api.findMatches(pack, entryKey)); } catch (err) { setError(err as AppError); } finally { setBusy(false); }
+  };
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <h3 style={{ margin: 0 }}>Sites</h3>
+      {(["modrinth", "curseforge"] as Source[]).map((s) => {
+        const id = s === "modrinth" ? e.ref.modrinthId : e.ref.curseforgeId;
+        if (id == null) return null;
+        return (
+          <div key={s} className="source-row">
+            <SourceBadge source={s} /><code>{id}</code>
+            {e.ref.preferred === s ? <span className="ok" style={{ fontSize: 12 }}>in use</span>
+              : <Button size="small" onClick={() => onUseSource(entryKey, s)}>Use {siteName(s)}</Button>}
+            {both && <Button size="small" onClick={() => onUnlink(entryKey, s)} title="This isn't the same mod">Unlink</Button>}
+          </div>
+        );
+      })}
+      {!both && (
+        <>
+          <div className="row"><Button size="small" onClick={find} disabled={busy}>{busy ? "Looking…" : `Find on ${siteName(missing)}`}</Button></div>
+          {error && <ErrorNotice error={error} />}
+          {cands?.length === 0 && <span className="muted" style={{ fontSize: 13 }}>No likely copy on {siteName(missing)}.</span>}
+          {cands && cands.length > 0 && (
+            <ul className="match-list">
+              {cands.slice(0, 5).map((c) => (
+                <li key={c.id}>
+                  <ModIcon url={c.iconUrl} label={c.name} size={28} />
+                  <span className="grow">{c.name} <span className="muted">· {c.slug}</span></span>
+                  <span className={`conf conf--${c.confidence}`} title={c.reason}>{c.confidence}</span>
+                  <Button size="small" variant="primary" onClick={() => { onLink(entryKey, c); setCands(null); }}>Link</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: string; file?: FileInfo | null; onPin: (versionId: string | null) => void }) {
   const e = pack.entries[entryKey];
   const [versions, setVersions] = useState<FileInfo[] | null>(null);
@@ -39,8 +93,9 @@ function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: st
   useEffect(() => { setVersions(null); setOpen(false); }, [entryKey]);
   const load = () => {
     setOpen(true);
-    if (versions || !e.ref.modrinthId) return;
-    api.entryVersions(e.ref.modrinthId, pack.mcVersion, pack.loader).then(setVersions, setError);
+    const id = entryCatalogId(e);
+    if (versions || !id) return;
+    api.entryVersions(id, pack.mcVersion, pack.loader).then(setVersions, setError);
   };
   return (
     <div className="stack" style={{ gap: 4 }}>
@@ -76,10 +131,11 @@ function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: st
   );
 }
 
-export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemove, onToggleLibrary, onPin, onFix, onSelect }: {
+export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemove, onToggleLibrary, onPin, onFix, onSelect, onUseSource, onLink, onUnlink }: {
   pack: Pack; analysis: Analysis | null; selection: Selection; onAdd: (h: SearchHit) => void; onAddProject: (id: string, pin?: string | null, forKey?: string) => void;
   onRemove: (k: string) => void; onToggleLibrary: (k: string, value: boolean) => void; onPin: (k: string, versionId: string | null) => void;
   onFix: (f: Fix) => void; onSelect: (k: string) => void;
+  onUseSource: (k: string, s: Source) => void; onLink: (k: string, c: Candidate) => void; onUnlink: (k: string, s: Source) => void;
 }) {
   const entryKey = selection?.kind === "entry" && pack.entries[selection.key] ? selection.key : undefined;
   const ref = selection?.kind === "hit" ? { source: selection.hit.source, id: selection.hit.id }
@@ -99,7 +155,7 @@ export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemo
   }, [ref?.source, ref?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ref) return <Panel className="pane" title="Details"><div className="empty-state"><p>Select a mod to see its details here.</p></div></Panel>;
-  const key = entryKey ?? findEntry(pack, ref.source, ref.id);
+  const key = entryKey ?? (selection?.kind === "hit" ? findHit(pack, selection.hit) : undefined);
   const entry = key ? pack.entries[key] : undefined;
   const rep = key ? analysis?.entries[key] : undefined;
   const fallback = selection?.kind === "hit" ? selection.hit : null;
@@ -130,7 +186,7 @@ export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemo
           )}
           {key ? <Button size="small" variant="danger" onClick={() => onRemove(key)}>Remove from pack</Button>
             : fallback && <Button size="small" variant="primary" onClick={() => onAdd(fallback)}>Add to pack</Button>}
-          {details && <Button size="small" onClick={() => api.openExternal(details.pageUrl)}>Modrinth ↗</Button>}
+          {details && <Button size="small" onClick={() => api.openExternal(details.pageUrl)}>{siteName(ref.source)} ↗</Button>}
         </div>
 
         {issues.map((i) => (
@@ -139,7 +195,10 @@ export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemo
           </Notice>
         ))}
 
+        {key && <Sites pack={pack} entryKey={key} onUseSource={onUseSource} onLink={onLink} onUnlink={onUnlink} />}
         {key && <FileControl pack={pack} entryKey={key} file={rep?.file} onPin={(v) => onPin(key, v)} />}
+        {!key && fallback?.also && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Also on {siteName(fallback.also.source)}: adding it links both.</p>}
+        {details?.distributionBlocked && <Notice title="Manual download">This mod's author blocks third-party downloads on CurseForge. Launchers will ask you to download it by hand.</Notice>}
         {rep && (
           <>
             <DepList title="Requires" deps={rep.required} pack={pack} onSelect={onSelect} onAdd={(d) => onAddProject(d.projectId, d.versionId, key)} />

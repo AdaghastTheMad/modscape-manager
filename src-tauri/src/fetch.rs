@@ -23,7 +23,7 @@ pub const ALLOWED_HOSTS: &[&str] = &[
 ];
 const ICON_HOSTS: &[&str] = &["cdn.modrinth.com", "media.forgecdn.net"];
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Freshness {
     pub fetched_at: i64,

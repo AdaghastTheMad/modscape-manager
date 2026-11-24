@@ -28,7 +28,23 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         "app_info" => Ok(json!({"version": "dev-bridge", "userAgent": modpack_planner_lib::USER_AGENT, "os": std::env::consts::OS, "allowedHosts": []})),
         "key_status" => Ok(json!({"keychainAvailable": false, "hasKey": false, "backend": "dev bridge", "problem": {"message": "No keychain in the dev bridge", "help": ""}})),
         "search" => to_val(st.source(arg(a, "source")?).search(&arg(a, "query")?).await),
-        "project_details" => to_val(st.modrinth.project(&arg::<String>(a, "id")?, force).await),
+        "search_all" => to_val(
+            modpack_planner_lib::search_all_impl(st, arg(a, "query")?, arg(a, "sources")?, arg(a, "prefer")?, arg(a, "mrOffset")?, arg(a, "cfOffset")?).await,
+        ),
+        "match_all" => to_val(modpack_planner_lib::match_all_impl(st, &arg(a, "pack")?).await),
+        "find_matches" => {
+            let pack: model::Pack = arg(a, "pack")?;
+            let key: String = arg(a, "key")?;
+            let e = pack.entries.get(&key).ok_or(json!({"code": "invalid", "message": "no such entry"}))?;
+            to_val(modpack_planner_lib::sources::matching::find_counterparts(&st.modrinth, &st.curseforge, e, &pack.mc_version, pack.loader).await)
+        }
+        "project_details" => match arg::<modpack_planner_lib::sources::Source>(a, "source")? {
+            modpack_planner_lib::sources::Source::Modrinth => to_val(st.modrinth.project(&arg::<String>(a, "id")?, force).await),
+            modpack_planner_lib::sources::Source::Curseforge => {
+                let id: String = arg(a, "id")?;
+                to_val(st.curseforge.project(id.trim_start_matches("cf:").parse().unwrap_or(0), force).await)
+            }
+        },
         "categories" => to_val(st.modrinth.categories(force).await),
         "game_versions" => to_val(st.modrinth.game_versions(force).await),
         "loader_versions" => to_val(modpack_planner_lib::loaders::loader_versions(&st.fetcher, arg(a, "loader")?, &arg::<String>(a, "mcVersion")?, force).await),
@@ -46,17 +62,18 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             Ok(json!({"pack": pack, "notes": notes}))
         }
         "delete_pack" => to_val(st.db.delete_pack(&arg::<String>(a, "id")?)),
-        "analyze_pack" => Ok(serde_json::to_value(resolve::analyze(&arg(a, "pack")?, &st.modrinth, force, store::now_secs()).await).unwrap()),
+        "analyze_pack" => Ok(serde_json::to_value(resolve::analyze(&arg(a, "pack")?, &st.catalog(), force, store::now_secs()).await).unwrap()),
         "plan_add" => {
             let pack: model::Pack = arg(a, "pack")?;
             let pin: Option<String> = arg(a, "pinVersion")?;
             let for_key: Option<String> = arg(a, "forKey")?;
-            to_val(resolve::plan_add(&pack, &arg::<String>(a, "projectId")?, pin.as_deref(), for_key.as_deref(), &st.modrinth, false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
+            let alt: Option<String> = arg(a, "altId")?;
+            to_val(resolve::plan_add(&pack, &arg::<String>(a, "projectId")?, pin.as_deref(), for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
         }
         "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
         "entry_versions" => {
             let (mc, loader): (String, _) = (arg(a, "mcVersion")?, arg(a, "loader")?);
-            let vs = st.modrinth.versions(&arg::<String>(a, "projectId")?, &mc, loader, false).await.map_err(|e| serde_json::to_value(e).unwrap())?;
+            let vs = st.catalog().versions(&arg::<String>(a, "projectId")?, &mc, loader, false).await.map_err(|e| serde_json::to_value(e).unwrap())?;
             Ok(serde_json::to_value(resolve::compatible_files(&vs, &mc, loader)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
@@ -67,6 +84,8 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
 
 fn main() {
     let st = AppState::new(store::Db::memory());
+    // Never touch the OS keychain from a dev tool: CurseForge stays off here.
+    st.curseforge.disable_keychain();
     let server = tiny_http::Server::http("127.0.0.1:1421").expect("bind 127.0.0.1:1421");
     println!("dev bridge listening on http://127.0.0.1:1421");
     let cors = |r: tiny_http::Response<std::io::Cursor<Vec<u8>>>| {

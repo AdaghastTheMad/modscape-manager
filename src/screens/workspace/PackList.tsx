@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Analysis, Fix, Issue, Severity, Suggestion } from "../../api";
 import { Button, ModIcon, Notice, Panel, Select, SourceBadge, Tabs, Tooltip } from "../../components/kit";
+import { SuggestionPicker } from "./Suggestions";
 import { entryName, isLibrary, prettyCategory, type Pack, type PackEntry } from "../../model";
 
 export type GroupBy = "category" | "pulledInBy";
@@ -13,6 +14,7 @@ export function fixLabel(f: Fix): string {
     case "remove": return "Remove";
     case "unpin": return "Unpin";
     case "pinTo": return `Pin ${f.versionNumber}`;
+    case "useSource": return `Use ${f.source === "modrinth" ? "Modrinth" : "CurseForge"}`;
   }
 }
 
@@ -22,9 +24,9 @@ function worst(issues: Issue[]): Severity | null {
   return issues.length ? "info" : null;
 }
 
-function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggestions, onSuggest, onDismiss }: {
+function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggestions, onSuggest, onDismiss, adding }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; onFix: (f: Fix) => void; onSelect: (k: string) => void; onRecheck: () => void;
-  suggestions: Suggestion[]; onSuggest: (s: Suggestion) => void; onDismiss: (s: Suggestion) => void;
+  suggestions: Suggestion[]; onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; adding: boolean;
 }) {
   const [open, setOpen] = useState<boolean | null>(null);
   const [showSugg, setShowSugg] = useState(false);
@@ -68,18 +70,8 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
             {showSugg ? "▾" : "▸"} {suggestions.length} optional dependenc{suggestions.length > 1 ? "ies" : "y"} suggested
           </button>
           {showSugg && (
-            <ul className="issue-list">
-              {suggestions.map((s) => (
-                <li key={s.projectId} className="issue issue--info">
-                  <ModIcon url={s.iconUrl} label={s.name} size={28} />
-                  <span className="issue__msg" title={s.summary}>
-                    <strong>{s.name}</strong> <span className="muted">· optional for {s.suggestedBy.map((k) => entryName(pack, k)).join(", ")}</span>
-                  </span>
-                  <Button size="small" variant="primary" onClick={() => onSuggest(s)}>Add</Button>
-                  <Button size="small" onClick={() => onDismiss(s)} aria-label={`Dismiss ${s.name}`}>✕</Button>
-                </li>
-              ))}
-            </ul>
+            <SuggestionPicker suggestions={suggestions} onAdd={onSuggest} onDismiss={onDismiss} busy={adding}
+              describe={(s) => `optional for ${s.suggestedBy.map((k) => entryName(pack, k)).join(", ")}`} />
           )}
         </div>
       )}
@@ -104,10 +96,10 @@ function groupTitle(g: string, by: GroupBy): string {
   return by === "pulledInBy" ? `Pulled in by ${g}` : prettyCategory(g);
 }
 
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
-  onSuggest: (s: Suggestion) => void; onDismiss: (s: Suggestion) => void;
+  onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
 }) {
   const [by, setBy] = useState<GroupBy>("category");
   const issuesByEntry = useMemo(() => {
@@ -135,6 +127,12 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
   }, [pack, by]);
   const count = Object.keys(pack.entries).length;
   const deps = Object.values(pack.entries).filter((e) => e.reason === "dependency").length;
+  const all = Object.values(pack.entries);
+  const sites = {
+    modrinth: all.filter((e) => e.ref.preferred === "modrinth").length,
+    curseforge: all.filter((e) => e.ref.preferred === "curseforge").length,
+    oneSite: all.filter((e) => !e.ref.modrinthId || e.ref.curseforgeId == null).length,
+  };
 
   return (
     <Panel className="pane" title={`Pack · ${count} mod${count === 1 ? "" : "s"}`} actions={
@@ -142,9 +140,18 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
     }>
       <div className="pane__fixed stack">
         <Checks pack={pack} analysis={analysis} analyzing={analyzing} onFix={onFix} onSelect={onSelect} onRecheck={onRecheck}
-          suggestions={analysis?.suggestions ?? []} onSuggest={onSuggest} onDismiss={onDismiss} />
+          suggestions={analysis?.suggestions ?? []} onSuggest={onSuggest} onDismiss={onDismiss} adding={adding} />
         {notice}
         {undo && <Notice title={undo.label}><Button size="small" onClick={undo.run}>Undo</Button></Notice>}
+        {count > 0 && (
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {sites.modrinth} from Modrinth · {sites.curseforge} from CurseForge
+              {sites.oneSite > 0 && <> · {sites.oneSite} linked on one site only</>}
+            </span>
+            {sites.oneSite > 0 && <Button size="small" onClick={onMatchAll} disabled={matching} title="Look for each mod's copy on the other site">{matching ? "Matching…" : "Match sites"}</Button>}
+          </div>
+        )}
         {count > 0 && (
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="muted" style={{ fontSize: 12 }}>{count - deps} added by you · {deps} dependenc{deps === 1 ? "y" : "ies"}</span>
@@ -186,7 +193,10 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
                         <span className={`sev-badge sev-badge--${w}`} tabIndex={0} aria-label={`${w}: ${iss.map((i) => i.message).join(" ")}`}>{SEV_ICON[w]}</span>
                       </Tooltip>
                     )}
-                    <SourceBadge source={e.ref.preferred} />
+                    <span className="badge-stack" title={e.ref.modrinthId && e.ref.curseforgeId != null ? "Linked on both sites; the bright badge is the one in use" : undefined}>
+                      <SourceBadge source={e.ref.preferred} />
+                      {e.ref.modrinthId && e.ref.curseforgeId != null && <span style={{ opacity: 0.45 }}><SourceBadge source={e.ref.preferred === "modrinth" ? "curseforge" : "modrinth"} /></span>}
+                    </span>
                     <Button size="small" variant="danger" aria-label={`Remove ${e.display.name}`} onClick={(ev) => { ev.stopPropagation(); onRemove(k); }}>✕</Button>
                   </li>
                 );

@@ -121,6 +121,8 @@ fn parse(body: Resp, q: &SearchQuery, freshness: Freshness) -> SearchPage {
                 client_side: h.client_side,
                 server_side: h.server_side,
                 compatible,
+                distribution_blocked: false,
+                also: None,
             }
         })
         .collect();
@@ -147,7 +149,7 @@ impl ModSource for Modrinth {
 }
 
 // ---------------- project details ----------------
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct License {
     #[serde(default)]
@@ -192,7 +194,7 @@ struct ProjectWire {
     icon_url: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectDetails {
     pub source: Source,
@@ -216,6 +218,8 @@ pub struct ProjectDetails {
     pub published: Option<String>,
     pub icon_url: Option<String>,
     pub freshness: Freshness,
+    #[serde(default)]
+    pub distribution_blocked: bool,
 }
 
 impl Modrinth {
@@ -252,6 +256,7 @@ impl Modrinth {
             published: p.published,
             icon_url: p.icon_url.filter(|u| !u.is_empty()),
             freshness,
+            distribution_blocked: false,
         })
     }
 
@@ -408,5 +413,29 @@ impl Catalog for Modrinth {
             out.append(&mut v);
         }
         Ok(out)
+    }
+}
+
+// ---------------- lookups used by cross-site matching ----------------
+impl Modrinth {
+    /// Project by slug or id; Ok(None) if there isn't one.
+    pub async fn project_info(&self, slug_or_id: &str, force: bool) -> AppResult<Option<ProjectInfo>> {
+        let req = self.fetcher.http().get(format!("{BASE}/v2/project/{}", urlencode_segment(slug_or_id)));
+        match self.fetcher.fetch_json::<ProjectInfo>(req, DAY, force, NAME, status_help(NAME)).await {
+            Ok((p, _)) => Ok(Some(p)),
+            Err(AppError::Api { status: 404, .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Modrinth versions whose file has one of these SHA-1 hashes (hash → version).
+    pub async fn versions_by_sha1(&self, hashes: &[String], force: bool) -> AppResult<std::collections::HashMap<String, Version>> {
+        if hashes.is_empty() {
+            return Ok(Default::default());
+        }
+        let body = serde_json::json!({ "hashes": hashes, "algorithm": "sha1" }).to_string();
+        let req = self.fetcher.http().post(format!("{BASE}/v2/version_files")).header("Content-Type", "application/json").body(body);
+        let (m, _) = self.fetcher.fetch_json::<std::collections::HashMap<String, Version>>(req, 7 * DAY, force, NAME, status_help(NAME)).await?;
+        Ok(m)
     }
 }

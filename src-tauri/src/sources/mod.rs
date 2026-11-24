@@ -1,15 +1,18 @@
 //! One trait over every mod site, so the UI never cares where a mod came from.
 
 pub mod curseforge;
+pub mod matching;
+pub mod merge;
 pub mod modrinth;
 
 use crate::error::AppResult;
 use crate::fetch::Freshness;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
+    #[default]
     Modrinth,
     Curseforge,
 }
@@ -109,6 +112,27 @@ pub struct SearchHit {
     pub server_side: Option<String>,
     /// None when compatibility wasn't checked (no version/loader given).
     pub compatible: Option<bool>,
+    /// CurseForge: the author blocks third-party downloads (launchers ask you to fetch it by hand).
+    #[serde(default)]
+    pub distribution_blocked: bool,
+    /// The same mod on the other site, when merged search matched it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub also: Option<AltRef>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AltRef {
+    pub source: Source,
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    pub downloads: u64,
+}
+
+/// Lowercase letters and digits only, for comparing names/slugs across sites.
+pub fn norm(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
 }
 
 #[derive(Debug, Clone, Serialize)]

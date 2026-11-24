@@ -47,7 +47,18 @@ export interface SearchHit {
   clientSide?: string | null;
   serverSide?: string | null;
   compatible?: boolean | null;
+  /** CurseForge: the author blocks third-party downloads. */
+  distributionBlocked?: boolean;
+  /** The same mod on the other site (merged search). */
+  also?: AltRef | null;
 }
+
+export interface AltRef { source: Source; id: string; slug: string; name: string; downloads: number }
+export interface PerSource<T> { modrinth?: T | null; curseforge?: T | null }
+export interface MergedPage { hits: SearchHit[]; totals: PerSource<number>; next: PerSource<number>; notes: string[]; stale: boolean }
+export type Confidence = "verified" | "likely" | "possible";
+export interface Candidate { source: Source; id: string; slug: string; name: string; iconUrl?: string | null; downloads: number; confidence: Confidence; reason: string }
+export interface EntryMatches { key: string; candidates: Candidate[] }
 
 export interface SearchPage { source: Source; total: number; hits: SearchHit[]; freshness?: Freshness | null }
 
@@ -56,7 +67,7 @@ export interface ProjectDetails {
   license?: { id: string; name: string; url?: string | null } | null;
   pageUrl: string; links: [string, string][]; gameVersions: string[]; loaders: string[]; categories: string[];
   clientSide?: string | null; serverSide?: string | null; downloads: number; follows: number;
-  updated?: string | null; published?: string | null; iconUrl?: string | null; freshness: Freshness;
+  updated?: string | null; published?: string | null; iconUrl?: string | null; freshness: Freshness; distributionBlocked?: boolean;
 }
 
 export interface Category { name: string; iconSvg: string }
@@ -75,13 +86,15 @@ export type Fix =
   | { kind: "addProject"; projectId: string; name: string; pinVersion?: string | null; forKey?: string | null }
   | { kind: "remove"; key: string }
   | { kind: "unpin"; key: string }
-  | { kind: "pinTo"; key: string; versionId: string; versionNumber: string };
+  | { kind: "pinTo"; key: string; versionId: string; versionNumber: string }
+  | { kind: "useSource"; key: string; source: Source };
 export interface Issue { id: string; severity: Severity; kind: string; entryKey?: string | null; otherKey?: string | null; message: string; fix?: Fix | null }
 export interface Suggestion { projectId: string; name: string; summary: string; iconUrl?: string | null; suggestedBy: string[] }
 export interface Analysis { entries: Record<string, EntryReport>; issues: Issue[]; suggestions: Suggestion[]; complete: boolean }
 export interface AddPlan {
   rootKey: string; additions: { key: string; entry: PackEntry }[]; links: { key: string; parent: string }[];
-  promote?: string | null; suggestions: Suggestion[]; notes: string[];
+  promote?: string | null; idLinks: { key: string; modrinthId?: string | null; curseforgeId?: number | null }[];
+  suggestions: Suggestion[]; notes: string[];
 }
 
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -120,8 +133,13 @@ export const api = {
   pickIcon: () => call<string | null>("pick_icon"),
   analyzePack: (pack: Pack, force = false) => call<Analysis>("analyze_pack", { pack, force }),
   /** forKey: add it as a dependency of that entry instead of as the user's own pick. */
-  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null) =>
-    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, addedAt: new Date().toISOString() }),
+  /** projectId: Modrinth id, or "cf:<id>" for CurseForge. altId: the same mod on the other site. */
+  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null, altId?: string | null) =>
+    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, altId: altId ?? null, addedAt: new Date().toISOString() }),
+  searchAll: (query: SearchQuery, sources: Source[], prefer: Source, mrOffset = 0, cfOffset = 0) =>
+    call<MergedPage>("search_all", { query, sources, prefer, mrOffset, cfOffset }),
+  findMatches: (pack: Pack, key: string) => call<Candidate[]>("find_matches", { pack, key }),
+  matchAll: (pack: Pack) => call<EntryMatches[]>("match_all", { pack }),
   planRemoval: (pack: Pack, keys: string[]) => call<string[]>("plan_removal", { pack, keys }),
   entryVersions: (projectId: string, mcVersion: string, loader: Loader) => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader }),
   cacheStats: () => call<CacheStats>("cache_stats"),

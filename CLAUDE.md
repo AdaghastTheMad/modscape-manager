@@ -83,7 +83,7 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 12. **Installers** — `scripts/build.sh` → `.deb`, `.AppImage`, `.dmg`.
 13. **Server variant** (nice-to-have).
 
-**Status:** M1 done, M2 done (committed). M3 built (Nov 24): awaiting owner's in-app test and review before M4. Linux Mint check still pending.
+**Status:** M1–M4 done (committed). Next: M5 (export to Prism), after owner's go-ahead. Linux Mint check still pending.
 
 ## Running it
 - `scripts/setup.sh` (or `--check`) → `scripts/dev.sh` (hot reload). Rust comes from rustup in `~/.cargo` (dev.sh sources `~/.cargo/env`).
@@ -104,7 +104,14 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
   - Checks: missing dependency, incompatible (once per pair), no build, pin mismatch/missing, version mismatch, client-/server-only (info), stale >1 year (warning, skipped when pinned), unneeded dependency (info). Sorted error → warning → info.
   - `pulledInBy` is re-synced from each complete analysis; incomplete analyses (offline, CurseForge-only entries) never sync and never mark anything unneeded.
   - Orphan cleanup (`model::plan_removal`) is reachability-based: a dependency survives only if something kept still pulls it in, so chains and cycles are handled.
-- **Dev bridge (dev only, never shipped):** `cd src-tauri && cargo run --example dev_bridge` serves the real core on `127.0.0.1:1421`; point the Vite page's `window.__TAURI_INTERNALS__.invoke` at it (snippet in `examples/dev_bridge.rs`) to exercise the UI against real Rust in a plain browser. Packs live in memory; no keychain or dialogs.
+- **CurseForge (M4):** inside the resolver CurseForge ids are `cf:<n>` (mods and files); pack entries store plain numbers (`curseforgeId`, and `fileId` pins may be stored either way; `resolve::target` normalises). `resolve::Multi` routes `cf:` ids to CurseForge, the rest to Modrinth. The key is read from the keychain once and kept in memory until saved/cleared (`forget_key`).
+  - Categories: CurseForge names map onto Modrinth slugs via `CATEGORY_MAP` (e.g. "API and Library" → `library`); unknown ones are slugified. A category filter with no CurseForge equivalent leaves CurseForge out (with a note). CurseForge has no client/server side data, so side filters don't apply to it and side checks skip CF-only mods.
+  - Files: releaseType 1/2/3 → release/beta/alpha; relationType 3 required, 2 optional, 5 incompatible, 1/6 embedded, 4 ignored. No `downloadUrl` ⇒ distribution blocked ⇒ warning, with a "Use Modrinth" fix when linked. Untagged old files count as Forge. Quilt packs query Fabric and Quilt files.
+  - Merged search (`sources/merge.rs`): same normalised slug *and* name ⇒ one row with `also`; relevance interleaves, downloads/updated sort the combined list; no key or a CF error ⇒ Modrinth-only with a note.
+  - Cross-site matching (`sources/matching.rs`): `verified` = identical SHA-1 file (CF→MR via Modrinth's hash lookup; MR→CF by comparing candidate files), `likely` = same slug and name, `possible` = one of them. Only `verified` is pre-ticked; the user confirms links. Dependencies from the other site link to an existing entry with the same slug+name (`IdLink`) instead of duplicating.
+  - Source preference: Prefer Modrinth/CurseForge switches every entry linked on both sites (clearing pins, with Undo); Mixed leaves per-mod choices. Per-mod "Use …" / "Unlink" in the details pane.
+  - Real CurseForge fixtures: `scripts/record-cf-fixtures.sh` (owner runs it; it reads the saved key, macOS may ask) → `tests/fixtures/resolver/curseforge.json`; `recorded_curseforge_jei_resolves` runs once data exists.
+- **Dev bridge (dev only, never shipped):** `cd src-tauri && cargo run --example dev_bridge` serves the real core on `127.0.0.1:1421`; point the Vite page's `window.__TAURI_INTERNALS__.invoke` at it (snippet in `examples/dev_bridge.rs`) to exercise the UI against real Rust in a plain browser. Packs live in memory; no keychain (CurseForge is deliberately off: `disable_keychain`) and no dialogs.
 - React state updaters must stay pure (StrictMode runs them twice): generate ids/timestamps before calling `update()`.
 
 ## Rules (from "Instructions for Claude Code" + owner's hard rules)
@@ -124,6 +131,7 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 
 ## Decisions log
 - Nov 23, 2026: all items in the design doc's "Decided" list.
+- Nov 24, 2026 (M4 review): optional suggestions are multi-select everywhere (tick any → "Add selected (N)", none ticked → "Add all"); picks are planned one after another against the growing pack and applied in one update.
 - Nov 24, 2026 (M3 review): owner approved release-first default plus a per-pack "newest build" toggle, and optional-dependency suggestions.
 - Nov 24, 2026: it's a Tauri desktop app (the doc's "local web app" wording is stale). M1 is judged on macOS only; Mint later. setup.sh installs Rust via rustup (portable to other Macs). pnpm via corepack. git author AdaghastTheMad <355918907+AdaghastTheMad@users.noreply.github.com>. Data-model revisions above. Duplicate-to-version moved to M6. Starter payload names (Iris/Oculus Search, Roxy, Diorama, etc.) to be verified against live data at the payloads milestone.
 - Pixel font: Pixelify Sans (OFL, bundled via `@fontsource/pixelify-sans`; no runtime font fetch). Monocraft isn't on npm and could replace it later.

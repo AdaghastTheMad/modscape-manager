@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type AddPlan, type Analysis, type AppError, type Fix, type SearchHit, type Suggestion } from "../api";
+import { api, type AddPlan, type Analysis, type AppError, type Candidate, type EntryMatches, type Fix, type SearchHit, type Source, type Suggestion } from "../api";
 import { Button, ErrorNotice, Modal, Notice, Select } from "../components/kit";
 import { typingIn } from "../hooks";
-import { applyPlan, entryFromHit, entryName, findEntry, loaderLabel, nowIso, syncPulledInBy, type ChannelPolicy, type Pack, type PackEntry } from "../model";
+import { applyPlan, applyPreference, catalogId, entryFromHit, entryName, findByCatalogId, findHit, loaderLabel, nowIso, syncPulledInBy, withSource, type ChannelPolicy, type Pack, type PackEntry, type SourcePreference } from "../model";
+import { ModIcon, SourceBadge } from "../components/kit";
 import { Browse } from "./workspace/Browse";
 import { Details, type Selection } from "./workspace/Details";
 import { PackList } from "./workspace/PackList";
+import { SuggestionPicker } from "./workspace/Suggestions";
 
 type AddNotice = { title: string; lines: string[]; suggestions: Suggestion[]; tone: "ok" | "warn" | "error" };
 
@@ -20,6 +22,8 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
   const [analyzing, setAnalyzing] = useState(false);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [orphanPrompt, setOrphanPrompt] = useState<{ keys: string[]; orphans: string[]; picked: Set<string> } | null>(null);
+  const [matchReview, setMatchReview] = useState<{ results: EntryMatches[]; picked: Map<string, Candidate> } | null>(null);
+  const [matching, setMatching] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const dirty = useRef(false);
   const latest = useRef<Pack | null>(null);
@@ -95,12 +99,12 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
     return { title: plan.promote ? `${root} is now marked as added by you` : `Added ${root}`, lines, suggestions: plan.suggestions, tone: plan.notes.length ? "warn" : "ok" };
   };
 
-  const addProject = useCallback(async (projectId: string, pin?: string | null, hit?: SearchHit, forKey?: string | null) => {
+  const addProject = useCallback(async (projectId: string, pin?: string | null, hit?: SearchHit, forKey?: string | null, altId?: string | null) => {
     const p = latest.current;
     if (!p || pending.has(projectId)) return;
     setPending((s) => new Set(s).add(projectId));
     try {
-      const plan = await api.planAdd(p, projectId, pin, forKey);
+      const plan = await api.planAdd(p, projectId, pin, forKey, altId);
       update((cur) => applyPlan(cur, plan));
       setNotice(describePlan(p, plan));
       if (!forKey) setSelection({ kind: "entry", key: plan.rootKey });
@@ -110,7 +114,7 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
         // Offline or API trouble: still add the mod; the checks will list what's missing.
         const key = crypto.randomUUID();
         const entry = entryFromHit(hit);
-        update((cur) => (findEntry(cur, hit.source, hit.id) ? cur : { ...cur, entries: { ...cur.entries, [key]: entry } }));
+        update((cur) => (findHit(cur, hit) ? cur : { ...cur, entries: { ...cur.entries, [key]: entry } }));
         setNotice({ title: `Added ${hit.name} without its dependencies`, lines: [err.message, "Checks will list anything missing once the connection is back."], suggestions: [], tone: "warn" });
       } else {
         setNotice({ title: "Couldn't add that mod", lines: [err.message, ...(err.help ? [err.help] : [])], suggestions: [], tone: "error" });
@@ -120,14 +124,50 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
     }
   }, [pending, update]);
 
-  const addHit = useCallback((h: SearchHit) => {
-    if (h.source === "modrinth") addProject(h.id, null, h);
-    else {
-      const key = crypto.randomUUID();
-      const entry = entryFromHit(h);
-      update((p) => (findEntry(p, h.source, h.id) ? p : { ...p, entries: { ...p.entries, [key]: entry } }));
+  // Several picks at once (suggestions): plan each against the pack as it will be
+  // after the previous ones, then apply them all in one update.
+  const [batchAdding, setBatchAdding] = useState(false);
+  const addMany = useCallback(async (ids: string[]) => {
+    const start = latest.current;
+    if (!start || !ids.length || batchAdding) return;
+    setBatchAdding(true);
+    setPending((s) => new Set([...s, ...ids]));
+    let p = start;
+    const plans: AddPlan[] = [];
+    const failed: string[] = [];
+    try {
+      for (const id of ids) {
+        if (findByCatalogId(p, id)) continue;
+        try {
+          const plan = await api.planAdd(p, id);
+          plans.push(plan);
+          p = applyPlan(p, plan);
+        } catch (e) { failed.push(`${id}: ${(e as AppError).message}`); }
+      }
+      if (plans.length) update((cur) => plans.reduce(applyPlan, cur));
+      const roots = plans.map((pl) => pl.additions.find((a) => a.key === pl.rootKey)?.entry.display.name).filter(Boolean) as string[];
+      const deps = plans.flatMap((pl) => pl.additions.filter((a) => a.key !== pl.rootKey).map((a) => a.entry.display.name));
+      const more = new Map<string, Suggestion>();
+      for (const pl of plans) for (const s of pl.suggestions) if (!findByCatalogId(p, s.projectId)) more.set(s.projectId, s);
+      setNotice({
+        title: roots.length ? `Added ${roots.join(", ")}` : "Nothing new to add",
+        lines: [
+          ...(deps.length ? [`Also added ${deps.length} required ${deps.length === 1 ? "dependency" : "dependencies"}: ${[...new Set(deps)].join(", ")}.`] : []),
+          ...plans.flatMap((pl) => pl.notes),
+          ...failed.map((f) => `Couldn't add ${f}`),
+        ],
+        suggestions: [...more.values()],
+        tone: failed.length ? "error" : plans.some((pl) => pl.notes.length) ? "warn" : "ok",
+      });
+    } finally {
+      setBatchAdding(false);
+      setPending((s) => { const n = new Set(s); ids.forEach((i) => n.delete(i)); return n; });
     }
-  }, [addProject, update]);
+  }, [batchAdding, update]);
+
+  const addHit = useCallback((h: SearchHit) => {
+    addProject(catalogId(h.source, h.id), null, h, null, h.also ? catalogId(h.also.source, h.also.id) : null);
+  }, [addProject]);
 
   // ---- removing (with orphan cleanup)
   const removeKeys = useCallback((keys: string[]) => {
@@ -168,6 +208,61 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
   }, [removeKeys]);
   useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 10000); return () => clearTimeout(t); }, [undo]);
 
+  // ---- sites: per-mod source, pack preference, linking copies
+  const useSource = useCallback((key: string, source: Source) => {
+    update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: withSource(p.entries[key], source) } } : p));
+  }, [update]);
+  const link = useCallback((key: string, c: Candidate) => {
+    update((p) => {
+      const e = p.entries[key];
+      if (!e) return p;
+      const ref = c.source === "modrinth" ? { ...e.ref, modrinthId: c.id } : { ...e.ref, curseforgeId: Number(c.id) };
+      let next: PackEntry = { ...e, ref };
+      if (p.sourcePreference !== "mixed") next = withSource(next, p.sourcePreference);
+      return { ...p, entries: { ...p.entries, [key]: next } };
+    });
+  }, [update]);
+  const unlink = useCallback((key: string, source: Source) => {
+    update((p) => {
+      const e = p.entries[key];
+      if (!e) return p;
+      const other: Source = source === "modrinth" ? "curseforge" : "modrinth";
+      const ref = { ...e.ref };
+      if (source === "modrinth") delete ref.modrinthId; else delete ref.curseforgeId;
+      const keep = other === "modrinth" ? !!ref.modrinthId : ref.curseforgeId != null;
+      if (!keep) return p; // never unlink an entry's only site
+      const moved = e.ref.preferred === source;
+      return { ...p, entries: { ...p.entries, [key]: { ...e, ref: { ...ref, preferred: moved ? other : e.ref.preferred }, fileId: moved ? undefined : e.fileId } } };
+    });
+  }, [update]);
+  const setPreference = useCallback((pref: SourcePreference) => {
+    const before = latest.current;
+    if (!before) return;
+    const after = applyPreference(before, pref);
+    const changed = Object.keys(after.entries).filter((k) => after.entries[k] !== before.entries[k]);
+    update((p) => applyPreference(p, pref));
+    if (changed.length) {
+      const old = Object.fromEntries(changed.map((k) => [k, before.entries[k]]));
+      setUndo({
+        label: `Switched ${changed.length} mod${changed.length === 1 ? "" : "s"} to ${pref === "modrinth" ? "Modrinth" : "CurseForge"}`,
+        run: () => { update((p) => ({ ...p, sourcePreference: before.sourcePreference, entries: { ...p.entries, ...Object.fromEntries(Object.entries(old).filter(([k]) => k in p.entries)) } })); setUndo(null); },
+      });
+    }
+  }, [update]);
+  const matchAll = useCallback(async () => {
+    const p = latest.current;
+    if (!p) return;
+    setMatching(true);
+    try {
+      const results = await api.matchAll(p);
+      // Only byte-identical files are pre-ticked; everything else waits for you.
+      const picked = new Map<string, Candidate>();
+      for (const r of results) if (r.candidates[0]?.confidence === "verified") picked.set(r.key, r.candidates[0]);
+      setMatchReview({ results, picked });
+    } catch (e) { setError(e as AppError); }
+    finally { setMatching(false); }
+  }, []);
+
   // ---- fixes and small edits
   const pin = useCallback((key: string, versionId: string | null) => {
     update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: { ...p.entries[key], fileId: versionId ?? undefined } } } : p));
@@ -178,8 +273,9 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
       case "remove": return void remove(f.key);
       case "unpin": return pin(f.key, null);
       case "pinTo": return pin(f.key, f.versionId);
+      case "useSource": return useSource(f.key, f.source);
     }
-  }, [addProject, remove, pin]);
+  }, [addProject, remove, pin, useSource]);
   const dismiss = useCallback((s: Suggestion) => {
     update((p) => (p.dismissedSuggestions.includes(s.projectId) ? p : { ...p, dismissedSuggestions: [...p.dismissedSuggestions, s.projectId] }));
   }, [update]);
@@ -201,14 +297,10 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
   const noticeEl = notice && (
     <Notice tone={notice.tone === "error" ? "error" : notice.tone === "ok" ? "ok" : "warn"} title={notice.title}>
       {notice.lines.map((l, i) => <div key={i}>{l}</div>)}
-      {notice.suggestions.filter((s) => !findEntry(pack, "modrinth", s.projectId)).length > 0 && (
+      {notice.suggestions.some((s) => !findByCatalogId(pack, s.projectId)) && (
         <div className="stack" style={{ gap: 4, marginTop: 6 }}>
-          <span className="muted">Optional extras:</span>
-          <div className="row">
-            {notice.suggestions.filter((s) => !findEntry(pack, "modrinth", s.projectId)).map((s) => (
-              <Button key={s.projectId} size="small" onClick={() => addProject(s.projectId)} title={s.summary}>+ {s.name}</Button>
-            ))}
-          </div>
+          <span className="muted">Optional extras (tick any, then add):</span>
+          <SuggestionPicker suggestions={notice.suggestions.filter((s) => !findByCatalogId(pack, s.projectId))} onAdd={addMany} busy={batchAdding} />
         </div>
       )}
       <div style={{ marginTop: 6 }}><Button size="small" onClick={() => setNotice(null)}>OK</Button></div>
@@ -222,6 +314,12 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
         <h2 style={{ margin: 0 }}>{pack.name}</h2>
         <span className="muted">Minecraft {pack.mcVersion} · {loaderLabel(pack.loader)} {pack.loaderVersion}</span>
         <span className="grow" />
+        <Select aria-label="Preferred site" title="Which site's copy is used for mods available on both"
+          value={pack.sourcePreference} onChange={(e) => setPreference(e.target.value as SourcePreference)}>
+          <option value="modrinth">Prefer Modrinth</option>
+          <option value="curseforge">Prefer CurseForge</option>
+          <option value="mixed">Mixed (choose per mod)</option>
+        </Select>
         <Select aria-label="Which builds unpinned mods use" title="Applies to every mod that isn't pinned to a version"
           value={pack.channelPolicy ?? "stable"} onChange={(e) => { const v = e.target.value as ChannelPolicy; update((p) => ({ ...p, channelPolicy: v })); }}>
           <option value="stable">Builds: releases first</option>
@@ -235,15 +333,58 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
       {error && <div className="row"><div className="grow"><ErrorNotice error={error} /></div><Button size="small" onClick={() => setError(null)}>Dismiss</Button></div>}
       <div className="workspace">
         <Browse pack={pack} onAdd={addHit} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
-          onSelect={(h) => { const k = findEntry(pack, h.source, h.id); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />
+          onSelect={(h) => { const k = findHit(pack, h); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />
         <PackList pack={pack} analysis={analysis} analyzing={analyzing} undo={undo} notice={noticeEl}
           selectedKey={selection?.kind === "entry" ? selection.key : undefined}
           onSelect={(k) => setSelection({ kind: "entry", key: k })} onRemove={remove} onFix={applyFix}
-          onRecheck={() => runAnalysis(true)} onSuggest={(s) => addProject(s.projectId)} onDismiss={dismiss} />
+          onRecheck={() => runAnalysis(true)} onSuggest={addMany} onDismiss={dismiss} adding={batchAdding}
+          onMatchAll={matchAll} matching={matching} />
         <Details pack={pack} analysis={analysis} selection={selection} onAdd={addHit} onAddProject={(id, pv, forKey) => addProject(id, pv, undefined, forKey)}
+          onUseSource={useSource} onLink={link} onUnlink={unlink}
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {matchReview && (
+        <Modal title="Copies on the other site" width={640} onClose={() => setMatchReview(null)}>
+          <div className="stack-lg">
+            {matchReview.results.length === 0 ? <p>No copies found for the mods that are only linked to one site.</p> : (
+              <>
+                <p className="muted">Tick the ones that are the same mod. Linking stores both ids, so the mod can switch site later without losing its place.
+                  Only <span className="conf conf--verified">verified</span> matches (an identical file on both sites) are ticked for you.</p>
+                <ul className="match-list">
+                  {matchReview.results.map((r) => {
+                    const c = matchReview.picked.get(r.key) ?? r.candidates[0];
+                    return (
+                      <li key={r.key}>
+                        <label className="mc-check">
+                          <input type="checkbox" checked={matchReview.picked.has(r.key)} onChange={(e) => {
+                            const picked = new Map(matchReview.picked);
+                            if (e.target.checked) picked.set(r.key, c); else picked.delete(r.key);
+                            setMatchReview({ ...matchReview, picked });
+                          }} />
+                        </label>
+                        <span className="grow"><strong>{entryName(pack, r.key)}</strong> <span className="muted">→</span></span>
+                        <ModIcon url={c.iconUrl} label={c.name} size={28} />
+                        <span>{c.name}</span>
+                        <SourceBadge source={c.source} />
+                        <span className={`conf conf--${c.confidence}`} title={c.reason}>{c.confidence}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Button onClick={() => setMatchReview(null)}>Close</Button>
+              {matchReview.picked.size > 0 && (
+                <Button variant="primary" onClick={() => { for (const [k, c] of matchReview.picked) link(k, c); setMatchReview(null); }}>
+                  Link {matchReview.picked.size}
+                </Button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
       {orphanPrompt && (
         <Modal title="Remove unneeded dependencies too?" width={520} onClose={() => setOrphanPrompt(null)}>
           <div className="stack-lg">

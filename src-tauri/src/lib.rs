@@ -34,6 +34,11 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Both sites behind one catalog for the resolver.
+    pub fn catalog(&self) -> resolve::Multi<'_> {
+        resolve::Multi { modrinth: &self.modrinth, curseforge: &self.curseforge }
+    }
+
     pub fn new(db: Db) -> Self {
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
@@ -82,15 +87,17 @@ async fn key_status() -> AppResult<keychain::KeyStatus> {
 }
 
 #[tauri::command]
-async fn save_curseforge_key(key: String) -> AppResult<keychain::KeyStatus> {
+async fn save_curseforge_key(state: St<'_>, key: String) -> AppResult<keychain::KeyStatus> {
     let key = keychain::validate(&key)?;
     blocking(move || keychain::set_key(&key)).await??;
+    state.curseforge.forget_key();
     blocking(keychain::status).await
 }
 
 #[tauri::command]
-async fn clear_curseforge_key() -> AppResult<keychain::KeyStatus> {
+async fn clear_curseforge_key(state: St<'_>) -> AppResult<keychain::KeyStatus> {
     blocking(keychain::clear_key).await??;
+    state.curseforge.forget_key();
     blocking(keychain::status).await
 }
 
@@ -104,7 +111,10 @@ async fn search(state: St<'_>, source: Source, query: SearchQuery) -> AppResult<
 async fn project_details(state: St<'_>, source: Source, id: String, force: Option<bool>) -> AppResult<modrinth::ProjectDetails> {
     match source {
         Source::Modrinth => state.modrinth.project(&id, force.unwrap_or(false)).await,
-        Source::Curseforge => Err(AppError::Invalid("CurseForge mod pages arrive with full CurseForge support (milestone 4).".into())),
+        Source::Curseforge => {
+            let n: u64 = id.trim_start_matches(sources::curseforge::PREFIX).parse().map_err(|_| AppError::Invalid("Not a CurseForge id.".into()))?;
+            state.curseforge.project(n, force.unwrap_or(false)).await
+        }
     }
 }
 
@@ -128,15 +138,142 @@ async fn icon(state: St<'_>, url: String) -> AppResult<String> {
     state.fetcher.icon_data_url(&url).await
 }
 
-// ---------------- resolver ----------------
-#[tauri::command]
-async fn analyze_pack(state: St<'_>, pack: Pack, force: Option<bool>) -> AppResult<resolve::Analysis> {
-    Ok(resolve::analyze(&pack, &state.modrinth, force.unwrap_or(false), store::now_secs()).await)
+/// Searches the chosen sites at once and merges the results.
+pub async fn search_all_impl(
+    st: &AppState,
+    query: SearchQuery,
+    sources: Vec<Source>,
+    prefer: Source,
+    mr_offset: u32,
+    cf_offset: u32,
+) -> AppResult<sources::merge::MergedPage> {
+    use sources::merge::{merge, MergedPage, PerSource};
+    let want_mr = sources.contains(&Source::Modrinth);
+    let want_cf = sources.contains(&Source::Curseforge);
+    let mut mq = query.clone();
+    mq.offset = mr_offset;
+    let mut cq = query.clone();
+    cq.offset = cf_offset;
+    let (mr, cf) = futures::join!(
+        async { if want_mr { Some(st.modrinth.search(&mq).await) } else { None } },
+        async { if want_cf { Some(st.curseforge.search_with_notes(&cq).await) } else { None } },
+    );
+    let mut notes = Vec::new();
+    let mr = match mr {
+        Some(Ok(p)) => Some(p),
+        Some(Err(e)) if !want_cf => return Err(e),
+        Some(Err(e)) => {
+            notes.push(format!("Modrinth: {e}"));
+            None
+        }
+        None => None,
+    };
+    let cf = match cf {
+        Some(Ok((p, n))) => {
+            notes.extend(n);
+            Some(p)
+        }
+        Some(Err(AppError::NoCurseForgeKey)) => {
+            notes.push("Add a CurseForge API key in Settings to search CurseForge too.".into());
+            None
+        }
+        Some(Err(e)) if mr.is_none() => return Err(e),
+        Some(Err(e)) => {
+            notes.push(format!("CurseForge: {e}"));
+            None
+        }
+        None => None,
+    };
+    let stale = [&mr, &cf].iter().any(|p| p.as_ref().and_then(|p| p.freshness.as_ref()).is_some_and(|f| f.stale));
+    let next_of = |p: &Option<SearchPage>, off: u32, cap: u64| {
+        p.as_ref().and_then(|p| {
+            let n = off as u64 + p.hits.len() as u64;
+            (!p.hits.is_empty() && n < p.total.min(cap)).then_some(n as u32)
+        })
+    };
+    let hits = merge(mr.as_ref(), cf.as_ref(), query.sort, prefer);
+    Ok(MergedPage {
+        totals: PerSource { modrinth: mr.as_ref().map(|p| p.total), curseforge: cf.as_ref().map(|p| p.total) },
+        next: PerSource { modrinth: next_of(&mr, mr_offset, u64::MAX), curseforge: next_of(&cf, cf_offset, 10_000) },
+        hits,
+        notes,
+        stale,
+    })
 }
 
 #[tauri::command]
-async fn plan_add(state: St<'_>, pack: Pack, project_id: String, pin_version: Option<String>, for_key: Option<String>, added_at: String) -> AppResult<resolve::AddPlan> {
-    resolve::plan_add(&pack, &project_id, pin_version.as_deref(), for_key.as_deref(), &state.modrinth, false, &added_at, || uuid::Uuid::new_v4().to_string()).await
+async fn search_all(
+    state: St<'_>,
+    query: SearchQuery,
+    sources: Vec<Source>,
+    prefer: Source,
+    mr_offset: u32,
+    cf_offset: u32,
+) -> AppResult<sources::merge::MergedPage> {
+    search_all_impl(&state, query, sources, prefer, mr_offset, cf_offset).await
+}
+
+#[tauri::command]
+async fn find_matches(state: St<'_>, pack: Pack, key: String) -> AppResult<Vec<sources::matching::Candidate>> {
+    let e = pack.entries.get(&key).ok_or_else(|| AppError::Invalid("That mod isn't in the pack.".into()))?;
+    sources::matching::find_counterparts(&state.modrinth, &state.curseforge, e, &pack.mc_version, pack.loader).await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryMatches {
+    key: String,
+    candidates: Vec<sources::matching::Candidate>,
+}
+
+/// Looks for the other site's copy of every mod that's only linked on one site.
+pub async fn match_all_impl(st: &AppState, pack: &Pack) -> AppResult<Vec<EntryMatches>> {
+    use futures::stream::{self, StreamExt};
+    let todo: Vec<(String, model::PackEntry)> = pack
+        .entries
+        .iter()
+        .filter(|(_, e)| e.mod_ref.modrinth_id.is_some() != e.mod_ref.curseforge_id.is_some())
+        .map(|(k, e)| (k.clone(), e.clone()))
+        .collect();
+    if todo.iter().any(|(_, e)| e.mod_ref.curseforge_id.is_none()) {
+        // Surface a missing key once instead of failing every lookup.
+        st.curseforge.ensure_key().await?;
+    }
+    let (mc, loader) = (pack.mc_version.clone(), pack.loader);
+    let (mr, cf) = (&st.modrinth, &st.curseforge);
+    let futs = todo.into_iter().map(|(key, e)| {
+        let mc = mc.clone();
+        Box::pin(async move {
+            let candidates = sources::matching::find_counterparts(mr, cf, &e, &mc, loader).await.unwrap_or_default();
+            EntryMatches { key, candidates }
+        }) as std::pin::Pin<Box<dyn std::future::Future<Output = EntryMatches> + Send + '_>>
+    });
+    let results: Vec<EntryMatches> = stream::iter(futs).buffer_unordered(4).collect().await;
+    Ok(results.into_iter().filter(|m| !m.candidates.is_empty()).collect())
+}
+
+#[tauri::command]
+async fn match_all(state: St<'_>, pack: Pack) -> AppResult<Vec<EntryMatches>> {
+    match_all_impl(&state, &pack).await
+}
+
+// ---------------- resolver ----------------
+#[tauri::command]
+async fn analyze_pack(state: St<'_>, pack: Pack, force: Option<bool>) -> AppResult<resolve::Analysis> {
+    Ok(resolve::analyze(&pack, &state.catalog(), force.unwrap_or(false), store::now_secs()).await)
+}
+
+#[tauri::command]
+async fn plan_add(
+    state: St<'_>,
+    pack: Pack,
+    project_id: String,
+    pin_version: Option<String>,
+    for_key: Option<String>,
+    alt_id: Option<String>,
+    added_at: String,
+) -> AppResult<resolve::AddPlan> {
+    resolve::plan_add(&pack, &project_id, pin_version.as_deref(), for_key.as_deref(), alt_id.as_deref(), &state.catalog(), false, &added_at, || uuid::Uuid::new_v4().to_string()).await
 }
 
 #[tauri::command]
@@ -147,7 +284,7 @@ fn plan_removal(pack: Pack, keys: Vec<String>) -> Vec<String> {
 #[tauri::command]
 async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, loader: Loader) -> AppResult<Vec<resolve::FileInfo>> {
     use resolve::Catalog;
-    let vs = state.modrinth.versions(&project_id, &mc_version, loader, false).await?;
+    let vs = state.catalog().versions(&project_id, &mc_version, loader, false).await?;
     Ok(resolve::compatible_files(&vs, &mc_version, loader))
 }
 
@@ -285,6 +422,9 @@ pub fn run() {
             save_curseforge_key,
             clear_curseforge_key,
             search,
+            search_all,
+            find_matches,
+            match_all,
             project_details,
             categories,
             game_versions,
@@ -359,7 +499,7 @@ mod live {
             let mut pack: Pack = serde_json::from_value(serde_json::json!({
                 "id": "live", "name": "Live", "mcVersion": "1.21.1", "loader": "fabric"
             })).unwrap();
-            let plan = resolve::plan_add(&pack, "PtjYWJkn", None, None, &st.modrinth, false, "t", || uuid::Uuid::new_v4().to_string()).await.expect("plan");
+            let plan = resolve::plan_add(&pack, "PtjYWJkn", None, None, None, &st.modrinth, false, "t", || uuid::Uuid::new_v4().to_string()).await.expect("plan");
             println!("plan_add sodium-extra: {} additions {:?}, {} suggestions, notes {:?}",
                 plan.additions.len(), plan.additions.iter().map(|a| &a.entry.display.name).collect::<Vec<_>>(), plan.suggestions.len(), plan.notes);
             for a in plan.additions { pack.entries.insert(a.key, a.entry); }

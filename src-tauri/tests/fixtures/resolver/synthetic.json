@@ -1,32 +1,426 @@
 {
-  "_comment": "Hand-written cases real Modrinth data doesn't cover. Same shape as modrinth.json. Real ids used: P7dR8mSH (Fabric API), qvIfYCYJ (QSL), AANobbMI (Sodium), SMxNOGZ6 (a Sodium 1.21.1 Fabric build).",
-  "projects": {
-    "cycA0000": {"id": "cycA0000", "slug": "cycle-a", "title": "Cycle A", "categories": ["utility"]},
-    "cycB0000": {"id": "cycB0000", "slug": "cycle-b", "title": "Cycle B", "categories": ["library"]},
-    "embHost0": {"id": "embHost0", "slug": "embed-host", "title": "Embed Host", "categories": ["utility"]},
-    "embLib00": {"id": "embLib00", "slug": "embedded-lib", "title": "Embedded Lib", "categories": ["library"]},
-    "ghostHst": {"id": "ghostHst", "slug": "ghost-host", "title": "Ghost Host", "categories": ["utility"]},
-    "verOnly0": {"id": "verOnly0", "slug": "version-only-host", "title": "Version Only Host", "categories": ["utility"]},
-    "qvIfYCYJ": {"id": "qvIfYCYJ", "slug": "qsl", "title": "Quilted Fabric API (QFAPI) / Quilt Standard Libraries (QSL)", "categories": ["library"]},
-    "quiltMod": {"id": "quiltMod", "slug": "quilt-mod", "title": "Quilt Mod", "categories": ["utility"]},
-    "channel0": {"id": "channel0", "slug": "channel-test", "title": "Channel Test", "categories": ["utility"]},
-    "oldMod00": {"id": "oldMod00", "slug": "old-mod", "title": "Old Mod", "categories": ["decoration"], "client_side": "unsupported", "server_side": "required"}
+ "_comment": "Hand-written cases real Modrinth data doesn't cover. Same shape as modrinth.json. Real ids used: P7dR8mSH (Fabric API), qvIfYCYJ (QSL), AANobbMI (Sodium), SMxNOGZ6 (a Sodium 1.21.1 Fabric build). CurseForge cases use cf:-prefixed ids exactly as the CurseForge catalog produces them.",
+ "projects": {
+  "cycA0000": {
+   "id": "cycA0000",
+   "slug": "cycle-a",
+   "title": "Cycle A",
+   "categories": [
+    "utility"
+   ]
   },
-  "versions": {
-    "cycA0000|1.21.1": [{"id": "cycAv1", "project_id": "cycA0000", "version_number": "1.0", "version_type": "release", "date_published": "2026-10-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{"project_id": "cycB0000", "version_id": null, "dependency_type": "required"}]}],
-    "cycB0000|1.21.1": [{"id": "cycBv1", "project_id": "cycB0000", "version_number": "1.0", "version_type": "release", "date_published": "2026-10-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{"project_id": "cycA0000", "version_id": null, "dependency_type": "required"}]}],
-    "embHost0|1.21.1": [{"id": "embHv1", "project_id": "embHost0", "version_number": "1.0", "version_type": "release", "date_published": "2026-10-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{"project_id": "embLib00", "version_id": null, "dependency_type": "embedded"}, {"project_id": "P7dR8mSH", "version_id": null, "dependency_type": "required"}]}],
-    "ghostHst|1.21.1": [{"id": "ghostv1", "project_id": "ghostHst", "version_number": "1.0", "version_type": "release", "date_published": "2026-10-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{"project_id": "gone0000", "version_id": null, "dependency_type": "required"}]}],
-    "verOnly0|1.21.1": [{"id": "verOv1", "project_id": "verOnly0", "version_number": "1.0", "version_type": "release", "date_published": "2026-10-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{"project_id": null, "version_id": "SMxNOGZ6", "dependency_type": "required"}]}],
-    "qvIfYCYJ|1.21.1": [{"id": "qslv1", "project_id": "qvIfYCYJ", "version_number": "11.0.0", "version_type": "release", "date_published": "2026-09-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["quilt"], "dependencies": []}],
-    "quiltMod|1.21.1": [{"id": "quiltv1", "project_id": "quiltMod", "version_number": "1.0", "version_type": "release", "date_published": "2026-10-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["quilt"], "dependencies": [{"project_id": "P7dR8mSH", "version_id": null, "dependency_type": "required"}]}],
-    "channel0|1.21.1": [
-      {"id": "chBeta", "project_id": "channel0", "version_number": "2.0-beta", "version_type": "beta", "date_published": "2026-11-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric", "quilt"], "dependencies": []},
-      {"id": "chRelFabric", "project_id": "channel0", "version_number": "1.0", "version_type": "release", "date_published": "2026-06-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": []},
-      {"id": "chRelQuilt", "project_id": "channel0", "version_number": "1.0-quilt", "version_type": "release", "date_published": "2026-05-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["quilt"], "dependencies": []},
-      {"id": "chAlpha", "project_id": "channel0", "version_number": "3.0-alpha", "version_type": "alpha", "date_published": "2026-11-20T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": []}
+  "cycB0000": {
+   "id": "cycB0000",
+   "slug": "cycle-b",
+   "title": "Cycle B",
+   "categories": [
+    "library"
+   ]
+  },
+  "embHost0": {
+   "id": "embHost0",
+   "slug": "embed-host",
+   "title": "Embed Host",
+   "categories": [
+    "utility"
+   ]
+  },
+  "embLib00": {
+   "id": "embLib00",
+   "slug": "embedded-lib",
+   "title": "Embedded Lib",
+   "categories": [
+    "library"
+   ]
+  },
+  "ghostHst": {
+   "id": "ghostHst",
+   "slug": "ghost-host",
+   "title": "Ghost Host",
+   "categories": [
+    "utility"
+   ]
+  },
+  "verOnly0": {
+   "id": "verOnly0",
+   "slug": "version-only-host",
+   "title": "Version Only Host",
+   "categories": [
+    "utility"
+   ]
+  },
+  "qvIfYCYJ": {
+   "id": "qvIfYCYJ",
+   "slug": "qsl",
+   "title": "Quilted Fabric API (QFAPI) / Quilt Standard Libraries (QSL)",
+   "categories": [
+    "library"
+   ]
+  },
+  "quiltMod": {
+   "id": "quiltMod",
+   "slug": "quilt-mod",
+   "title": "Quilt Mod",
+   "categories": [
+    "utility"
+   ]
+  },
+  "channel0": {
+   "id": "channel0",
+   "slug": "channel-test",
+   "title": "Channel Test",
+   "categories": [
+    "utility"
+   ]
+  },
+  "oldMod00": {
+   "id": "oldMod00",
+   "slug": "old-mod",
+   "title": "Old Mod",
+   "categories": [
+    "decoration"
+   ],
+   "client_side": "unsupported",
+   "server_side": "required"
+  },
+  "lhGA9TYQ": {
+   "id": "lhGA9TYQ",
+   "slug": "architectury-api",
+   "title": "Architectury API",
+   "categories": [
+    "library"
+   ]
+  },
+  "cf:2001": {
+   "id": "cf:2001",
+   "slug": "architectury-api",
+   "title": "Architectury API",
+   "categories": [
+    "library"
+   ]
+  },
+  "cf:1001": {
+   "id": "cf:1001",
+   "slug": "cf-tech-mod",
+   "title": "CF Tech Mod",
+   "categories": [
+    "technology"
+   ]
+  },
+  "cf:3001": {
+   "id": "cf:3001",
+   "slug": "cf-only-lib",
+   "title": "CF Only Lib",
+   "categories": [
+    "library"
+   ]
+  }
+ },
+ "versions": {
+  "cycA0000|1.21.1": [
+   {
+    "id": "cycAv1",
+    "project_id": "cycA0000",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
     ],
-    "oldMod00|1.21.1": [{"id": "oldv1", "project_id": "oldMod00", "version_number": "0.1", "version_type": "release", "date_published": "2023-03-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": []}]
-  },
-  "versionById": {}
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": "cycB0000",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "cycB0000|1.21.1": [
+   {
+    "id": "cycBv1",
+    "project_id": "cycB0000",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": "cycA0000",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "embHost0|1.21.1": [
+   {
+    "id": "embHv1",
+    "project_id": "embHost0",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": "embLib00",
+      "version_id": null,
+      "dependency_type": "embedded"
+     },
+     {
+      "project_id": "P7dR8mSH",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "ghostHst|1.21.1": [
+   {
+    "id": "ghostv1",
+    "project_id": "ghostHst",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": "gone0000",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "verOnly0|1.21.1": [
+   {
+    "id": "verOv1",
+    "project_id": "verOnly0",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": null,
+      "version_id": "SMxNOGZ6",
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "qvIfYCYJ|1.21.1": [
+   {
+    "id": "qslv1",
+    "project_id": "qvIfYCYJ",
+    "version_number": "11.0.0",
+    "version_type": "release",
+    "date_published": "2026-09-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "quilt"
+    ],
+    "dependencies": []
+   }
+  ],
+  "quiltMod|1.21.1": [
+   {
+    "id": "quiltv1",
+    "project_id": "quiltMod",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "quilt"
+    ],
+    "dependencies": [
+     {
+      "project_id": "P7dR8mSH",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "channel0|1.21.1": [
+   {
+    "id": "chBeta",
+    "project_id": "channel0",
+    "version_number": "2.0-beta",
+    "version_type": "beta",
+    "date_published": "2026-11-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric",
+     "quilt"
+    ],
+    "dependencies": []
+   },
+   {
+    "id": "chRelFabric",
+    "project_id": "channel0",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-06-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
+   },
+   {
+    "id": "chRelQuilt",
+    "project_id": "channel0",
+    "version_number": "1.0-quilt",
+    "version_type": "release",
+    "date_published": "2026-05-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "quilt"
+    ],
+    "dependencies": []
+   },
+   {
+    "id": "chAlpha",
+    "project_id": "channel0",
+    "version_number": "3.0-alpha",
+    "version_type": "alpha",
+    "date_published": "2026-11-20T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
+   }
+  ],
+  "oldMod00|1.21.1": [
+   {
+    "id": "oldv1",
+    "project_id": "oldMod00",
+    "version_number": "0.1",
+    "version_type": "release",
+    "date_published": "2023-03-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
+   }
+  ],
+  "lhGA9TYQ|1.21.1": [
+   {
+    "id": "archMRv1",
+    "project_id": "lhGA9TYQ",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "neoforge"
+    ],
+    "dependencies": []
+   }
+  ],
+  "cf:2001|1.21.1": [
+   {
+    "id": "cf:8001",
+    "project_id": "cf:2001",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "neoforge"
+    ],
+    "dependencies": []
+   }
+  ],
+  "cf:3001|1.21.1": [
+   {
+    "id": "cf:8301",
+    "project_id": "cf:3001",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "neoforge"
+    ],
+    "dependencies": []
+   }
+  ],
+  "cf:1001|1.21.1": [
+   {
+    "id": "cf:9001",
+    "project_id": "cf:1001",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "neoforge"
+    ],
+    "dependencies": [
+     {
+      "project_id": "cf:2001",
+      "version_id": null,
+      "dependency_type": "required"
+     },
+     {
+      "project_id": "cf:3001",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ],
+    "distribution_blocked": true
+   }
+  ]
+ },
+ "versionById": {}
 }
