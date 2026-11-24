@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type AppError, type KeyStatus, type Loader, type SearchPage, type Source } from "../api";
 import { Button, Input, Notice, Panel, Select, Slot, SourceBadge, Tooltip } from "../components/kit";
 import type { CacheStats } from "../api";
+import { setPref, usePrefs } from "../prefs";
 
 const fmt = new Intl.NumberFormat(undefined, { notation: "compact" });
 
@@ -133,6 +134,19 @@ function ConnectionTest({ hasKey }: { hasKey: boolean }) {
   );
 }
 
+function InterfaceSection() {
+  const prefs = usePrefs();
+  return (
+    <Panel title="Interface">
+      <label className="mc-check">
+        <input type="checkbox" checked={prefs.syncGrouping} onChange={(e) => setPref("syncGrouping", e.target.checked)} />
+        Keep the list's grouping and the graph's regions in sync
+      </label>
+      <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>Off: each view keeps its own grouping. On: changing one changes both.</p>
+    </Panel>
+  );
+}
+
 function CacheSection() {
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [busy, setBusy] = useState(false);
@@ -164,6 +178,7 @@ export function Settings() {
       {coreError && <ErrorNotice error={coreError} />}
       <KeySection status={status} setStatus={setStatus} />
       <ConnectionTest hasKey={!!status?.hasKey} />
+      <InterfaceSection />
       <CacheSection />
       <Panel title="Privacy" inset>
         <p className="muted">No telemetry, analytics or accounts. The only outside calls are to Modrinth, CurseForge and loader version

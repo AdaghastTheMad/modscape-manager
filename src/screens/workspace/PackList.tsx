@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import type { Analysis, Fix, Issue, Severity, Suggestion } from "../../api";
 import { Button, ModIcon, Notice, Panel, Select, SourceBadge, Tabs, Tooltip } from "../../components/kit";
 import { SuggestionPicker } from "./Suggestions";
+import { GROUPINGS, groupKey, groupRank, groupTitle, isLibraryGroup, type Grouping } from "../../grouping";
 import { entryName, isLibrary, prettyCategory, type Pack, type PackEntry } from "../../model";
 
-export type GroupBy = "category" | "pulledInBy";
 
 const SEV_ICON: Record<Severity, string> = { error: "✖", warning: "!", info: "i" };
 
@@ -79,30 +79,17 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
   );
 }
 
-function groupKey(e: PackEntry, by: GroupBy, pack: Pack): string {
-  if (isLibrary(e) && by === "category") return "\u0000library";
-  if (by === "pulledInBy") {
-    if (e.reason !== "dependency") return "\u0000user";
-    const parents = e.pulledInBy.filter((k) => k in pack.entries);
-    return parents.length ? parents.map((k) => entryName(pack, k)).sort().join(", ") : "\u0001unneeded";
-  }
-  return e.display.categories.find((c) => c !== "library") ?? "uncategorized";
-}
+export type PackView = "list" | "graph";
 
-function groupTitle(g: string, by: GroupBy): string {
-  if (g === "\u0000library") return "Libraries";
-  if (g === "\u0000user") return "Added by you";
-  if (g === "\u0001unneeded") return "Dependencies nothing needs";
-  return by === "pulledInBy" ? `Pulled in by ${g}` : prettyCategory(g);
-}
-
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
   onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
   onCrossCheck: (v: boolean) => void;
+  view: PackView; onView: (v: PackView) => void; graph: React.ReactNode;
+  grouping: Grouping; onGrouping: (g: Grouping) => void;
 }) {
-  const [by, setBy] = useState<GroupBy>("category");
+  const by = grouping;
   const issuesByEntry = useMemo(() => {
     const m = new Map<string, Issue[]>();
     for (const i of analysis?.issues ?? []) {
@@ -120,11 +107,8 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
       m.set(g, [...(m.get(g) ?? []), [k, e]]);
     }
     for (const list of m.values()) list.sort((a, b) => a[1].display.name.localeCompare(b[1].display.name));
-    // "\u0000" groups go first when grouping by origin, libraries go last by category.
-    return [...m.entries()].sort((a, b) => {
-      const rank = (g: string) => (g === "\u0000user" ? -1 : g === "\u0000library" || g === "\u0001unneeded" ? 1 : 0);
-      return rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]);
-    });
+    // "Added by you" first; libraries, unneeded and untagged last.
+    return [...m.entries()].sort((a, b) => groupRank(a[0]) - groupRank(b[0]) || a[0].localeCompare(b[0]));
   }, [pack, by]);
   const count = Object.keys(pack.entries).length;
   const deps = Object.values(pack.entries).filter((e) => e.reason === "dependency").length;
@@ -137,7 +121,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
 
   return (
     <Panel className="pane" title={`Pack · ${count} mod${count === 1 ? "" : "s"}`} actions={
-      <Tabs label="View" value="list" onChange={() => {}} tabs={[{ id: "list", label: "List" }, { id: "graph", label: "Graph (M7)", disabled: true }]} />
+      <Tabs label="View (G)" value={view} onChange={onView} tabs={[{ id: "list", label: "List" }, { id: "graph", label: "Graph" }]} />
     }>
       <div className="pane__fixed stack">
         <Checks pack={pack} analysis={analysis} analyzing={analyzing} onFix={onFix} onSelect={onSelect} onRecheck={onRecheck}
@@ -162,18 +146,17 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
         {count > 0 && (
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="muted" style={{ fontSize: 12 }}>{count - deps} added by you · {deps} dependenc{deps === 1 ? "y" : "ies"}</span>
-            <Select aria-label="Group by" value={by} onChange={(e) => setBy(e.target.value as GroupBy)}>
-              <option value="category">Group by category</option>
-              <option value="pulledInBy">Group by "pulled in by"</option>
+            <Select aria-label="Group by" value={by} onChange={(e) => onGrouping(e.target.value as Grouping)}>
+              {GROUPINGS.map((g) => <option key={g.id} value={g.id}>Group by {g.label}</option>)}
             </Select>
           </div>
         )}
       </div>
-      <div className="pane__body stack">
+      {view === "graph" ? graph : <div className="pane__body stack">
         {count === 0 ? (
           <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Search on the left and press + (or Enter) to add mods. Their dependencies come along automatically.</p></div></div>
         ) : groups.map(([g, list]) => (
-          <section key={g} className={g === "\u0000library" ? "group group--lib" : "group"}>
+          <section key={g} className={isLibraryGroup(g) ? "group group--lib" : "group"}>
             <h3 className="group__title">{groupTitle(g, by)} <span className="muted">({list.length})</span></h3>
             <ul className="entry-list">
               {list.map(([k, e]) => {
@@ -211,7 +194,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
             </ul>
           </section>
         ))}
-      </div>
+      </div>}
     </Panel>
   );
 }

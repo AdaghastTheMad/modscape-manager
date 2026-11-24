@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Analysis, type AppError, type Candidate, type DepLink, type FileInfo, type Fix, type ProjectDetails, type SearchHit, type Source } from "../../api";
 import { Button, ErrorNotice, ModIcon, Notice, Panel, SourceBadge } from "../../components/kit";
 import { Markdown } from "../../components/Markdown";
@@ -85,6 +85,39 @@ function Sites({ pack, entryKey, onUseSource, onLink, onUnlink }: {
   );
 }
 
+function TagsNotes({ pack, entryKey, onTags, onNotes, focusSignal }: {
+  pack: Pack; entryKey: string; onTags: (k: string, t: string[]) => void; onNotes: (k: string, n: string) => void; focusSignal: number;
+}) {
+  const e = pack.entries[entryKey];
+  const [draft, setDraft] = useState("");
+  const [notes, setNotes] = useState(e.notes ?? "");
+  const input = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { setNotes(pack.entries[entryKey]?.notes ?? ""); setDraft(""); }, [entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (focusSignal) input.current?.focus(); }, [focusSignal]);
+  // Tags already used in this pack, to pick from.
+  const known = [...new Set(Object.values(pack.entries).flatMap((x) => x.tags))].filter((t) => !e.tags.includes(t)).sort();
+  const add = (t: string) => {
+    const v = t.trim().replace(/^#/, "");
+    if (v && !e.tags.includes(v)) onTags(entryKey, [...e.tags, v]);
+    setDraft("");
+  };
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <h3 style={{ margin: 0 }}>Tags & notes</h3>
+      <div className="row" style={{ gap: 4 }}>
+        {e.tags.map((t) => (
+          <span key={t} className="tag-chip">#{t}<button type="button" aria-label={`Remove tag ${t}`} onClick={() => onTags(entryKey, e.tags.filter((x) => x !== t))}>✕</button></span>
+        ))}
+        <input ref={input} className="mc-input tag-input" list={`tags-${entryKey}`} placeholder="add tag…" value={draft}
+          onChange={(ev) => setDraft(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); add(draft); } }} aria-label="Add a tag" />
+        <datalist id={`tags-${entryKey}`}>{known.map((t) => <option key={t} value={t} />)}</datalist>
+      </div>
+      <textarea className="mc-input notes" rows={2} placeholder="Notes, e.g. replace with X if it doesn't port to 26.1" value={notes}
+        onChange={(ev) => setNotes(ev.target.value)} onBlur={() => { if ((e.notes ?? "") !== notes) onNotes(entryKey, notes); }} aria-label="Notes" />
+    </div>
+  );
+}
+
 function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: string; file?: FileInfo | null; onPin: (versionId: string | null) => void }) {
   const e = pack.entries[entryKey];
   const [versions, setVersions] = useState<FileInfo[] | null>(null);
@@ -131,11 +164,12 @@ function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: st
   );
 }
 
-export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemove, onToggleLibrary, onPin, onFix, onSelect, onUseSource, onLink, onUnlink }: {
+export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemove, onToggleLibrary, onPin, onFix, onSelect, onUseSource, onLink, onUnlink, onTags, onNotes, tagFocus }: {
   pack: Pack; analysis: Analysis | null; selection: Selection; onAdd: (h: SearchHit) => void; onAddProject: (id: string, pin?: string | null, forKey?: string) => void;
   onRemove: (k: string) => void; onToggleLibrary: (k: string, value: boolean) => void; onPin: (k: string, versionId: string | null) => void;
   onFix: (f: Fix) => void; onSelect: (k: string) => void;
   onUseSource: (k: string, s: Source) => void; onLink: (k: string, c: Candidate) => void; onUnlink: (k: string, s: Source) => void;
+  onTags: (k: string, t: string[]) => void; onNotes: (k: string, n: string) => void; tagFocus: number;
 }) {
   const entryKey = selection?.kind === "entry" && pack.entries[selection.key] ? selection.key : undefined;
   const ref = selection?.kind === "hit" ? { source: selection.hit.source, id: selection.hit.id }
@@ -195,6 +229,7 @@ export function Details({ pack, analysis, selection, onAdd, onAddProject, onRemo
           </Notice>
         ))}
 
+        {key && <TagsNotes pack={pack} entryKey={key} onTags={onTags} onNotes={onNotes} focusSignal={tagFocus} />}
         {key && <Sites pack={pack} entryKey={key} onUseSource={onUseSource} onLink={onLink} onUnlink={onUnlink} />}
         {key && <FileControl pack={pack} entryKey={key} file={rep?.file} onPin={(v) => onPin(key, v)} />}
         {!key && fallback?.also && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Also on {siteName(fallback.also.source)}: adding it links both.</p>}

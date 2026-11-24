@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type AddPlan, type Analysis, type AppError, type Candidate, type EntryMatches, type Fix, type SearchHit, type Source, type Suggestion } from "../api";
 import { Button, ErrorNotice, Modal, Notice, Select } from "../components/kit";
 import { typingIn } from "../hooks";
@@ -9,6 +9,12 @@ import { Details, type Selection } from "./workspace/Details";
 import { PackList } from "./workspace/PackList";
 import { ExportDialog } from "./workspace/ExportDialog";
 import { DuplicateDialog } from "./workspace/DuplicateDialog";
+import type { BulkVersionAction, GraphPos } from "./workspace/Graph";
+import type { Grouping } from "../grouping";
+import { usePrefs } from "../prefs";
+// Cytoscape is large; load the graph only when it is first opened.
+const Graph = lazy(() => import("./workspace/Graph").then((m) => ({ default: m.Graph })));
+import type { PackView } from "./workspace/PackList";
 import { SuggestionPicker } from "./workspace/Suggestions";
 
 type AddNotice = { title: string; lines: string[]; suggestions: Suggestion[]; tone: "ok" | "warn" | "error" };
@@ -28,6 +34,17 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
   const [matching, setMatching] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [view, setView] = useState<PackView>("list");
+  // List grouping and graph regions: independent unless synced in Settings.
+  const prefs = usePrefs();
+  const [listGrouping, setListGrouping] = useState<Grouping>("category");
+  const [graphGrouping, setGraphGrouping] = useState<Grouping>("category");
+  const setGrouping = (which: "list" | "graph") => (g: Grouping) => {
+    if (prefs.syncGrouping || which === "list") setListGrouping(g);
+    if (prefs.syncGrouping || which === "graph") setGraphGrouping(g);
+  };
+  useEffect(() => { if (prefs.syncGrouping) setGraphGrouping(listGrouping); }, [prefs.syncGrouping]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [tagFocus, setTagFocus] = useState(0);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const dirty = useRef(false);
   const latest = useRef<Pack | null>(null);
@@ -103,13 +120,19 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     return { title: plan.promote ? `${root} is now marked as added by you` : `Added ${root}`, lines, suggestions: plan.suggestions, tone: plan.notes.length ? "warn" : "ok" };
   };
 
-  const addProject = useCallback(async (projectId: string, pin?: string | null, hit?: SearchHit, forKey?: string | null, altId?: string | null) => {
+  const addProject = useCallback(async (projectId: string, pin?: string | null, hit?: SearchHit, forKey?: string | null, altId?: string | null, at?: { x: number; y: number }) => {
     const p = latest.current;
     if (!p || pending.has(projectId)) return;
     setPending((s) => new Set(s).add(projectId));
     try {
       const plan = await api.planAdd(p, projectId, pin, forKey, altId);
-      update((cur) => applyPlan(cur, plan));
+      update((cur) => {
+        const next = applyPlan(cur, plan);
+        // Dropped on the graph: put (and pin) it where it was dropped.
+        const root = next.entries[plan.rootKey];
+        if (at && root) next.entries = { ...next.entries, [plan.rootKey]: { ...root, graphPos: { x: Math.round(at.x), y: Math.round(at.y), pinned: true } } };
+        return next;
+      });
       setNotice(describePlan(p, plan));
       if (!forKey) setSelection({ kind: "entry", key: plan.rootKey });
     } catch (e) {
@@ -169,9 +192,55 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     }
   }, [batchAdding, update]);
 
-  const addHit = useCallback((h: SearchHit) => {
-    addProject(catalogId(h.source, h.id), null, h, null, h.also ? catalogId(h.also.source, h.also.id) : null);
+  const addHit = useCallback((h: SearchHit, at?: { x: number; y: number }) => {
+    addProject(catalogId(h.source, h.id), null, h, null, h.also ? catalogId(h.also.source, h.also.id) : null, at);
   }, [addProject]);
+
+  // Graph positions (layout results and drags) are saved with the pack.
+  const setPositions = useCallback((ps: Record<string, GraphPos>) => {
+    update((p) => {
+      let changed = false;
+      const entries = { ...p.entries };
+      for (const [k, pos] of Object.entries(ps)) {
+        const e = entries[k];
+        if (!e) continue;
+        const g = e.graphPos;
+        if (g && g.x === pos.x && g.y === pos.y && g.pinned === pos.pinned) continue;
+        entries[k] = { ...e, graphPos: pos };
+        changed = true;
+      }
+      return changed ? { ...p, entries } : p;
+    });
+  }, [update]);
+  const bulkVersions = useCallback((keys: string[], action: BulkVersionAction) => {
+    update((p) => {
+      const entries = { ...p.entries };
+      for (const k of keys) {
+        const e = entries[k];
+        if (!e) continue;
+        const v = action === "pin" ? analysis?.entries[k]?.file?.versionId : undefined;
+        if (action === "pin" && !v) continue; // no file chosen yet: nothing to pin
+        entries[k] = { ...e, fileId: v };
+      }
+      return { ...p, entries };
+    });
+  }, [analysis, update]);
+  const bulkTag = useCallback((keys: string[], tag: string) => {
+    const t = tag.replace(/^#/, "").trim();
+    if (!t) return;
+    update((p) => {
+      const entries = { ...p.entries };
+      for (const k of keys) if (entries[k] && !entries[k].tags.includes(t)) entries[k] = { ...entries[k], tags: [...entries[k].tags, t] };
+      return { ...p, entries };
+    });
+  }, [update]);
+  const togglePin = useCallback((k: string) => {
+    const e = latest.current?.entries[k];
+    if (!e) return;
+    if (e.fileId) return pin(k, null);
+    const v = analysis?.entries[k]?.file?.versionId;
+    if (v) pin(k, v);
+  }, [analysis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- removing (with orphan cleanup)
   const removeKeys = useCallback((keys: string[]) => {
@@ -289,6 +358,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     const onKey = (e: KeyboardEvent) => {
       if (typingIn(e) || orphanPrompt) return;
       if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
+      if ((e.key === "g" || e.key === "G") && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setView((v) => (v === "graph" ? "list" : "graph")); }
       if ((e.key === "Delete" || e.key === "Backspace") && selection?.kind === "entry") { e.preventDefault(); remove(selection.key); }
     };
     window.addEventListener("keydown", onKey);
@@ -336,7 +406,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
         <Button size="small" variant="primary" onClick={async () => { await flush(); setExporting(true); }}>Export…</Button>
       </div>
       {error && <div className="row"><div className="grow"><ErrorNotice error={error} /></div><Button size="small" onClick={() => setError(null)}>Dismiss</Button></div>}
-      <div className="workspace">
+      <div className={`workspace${view === "graph" ? " workspace--graph" : ""}`}>
         <Browse pack={pack} onAdd={addHit} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
           onSelect={(h) => { const k = findHit(pack, h); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />
         <PackList pack={pack} analysis={analysis} analyzing={analyzing} undo={undo} notice={noticeEl}
@@ -344,9 +414,19 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           onSelect={(k) => setSelection({ kind: "entry", key: k })} onRemove={remove} onFix={applyFix}
           onRecheck={() => runAnalysis(true)} onSuggest={addMany} onDismiss={dismiss} adding={batchAdding}
           onMatchAll={matchAll} matching={matching}
-          onCrossCheck={(v) => update((p) => ({ ...p, crossCheckDeps: v }))} />
+          onCrossCheck={(v) => update((p) => ({ ...p, crossCheckDeps: v }))}
+          view={view} onView={setView} grouping={listGrouping} onGrouping={setGrouping("list")}
+          graph={view === "graph" && (
+            <Suspense fallback={<p className="muted">Loading graph…</p>}><Graph pack={pack} analysis={analysis} selectedKey={selection?.kind === "entry" ? selection.key : undefined}
+              grouping={graphGrouping} onGrouping={setGrouping("graph")} onBulkVersions={bulkVersions} onBulkTag={bulkTag}
+              onSelect={(k) => setSelection(k ? { kind: "entry", key: k } : null)} onOpen={(k) => setSelection({ kind: "entry", key: k })}
+              onRemove={remove} onTogglePin={togglePin} onTag={(k) => { setSelection({ kind: "entry", key: k }); setTagFocus((n) => n + 1); }}
+              onPositions={setPositions} onDropHit={(h, at) => addHit(h, at)} /></Suspense>
+          )} />
         <Details pack={pack} analysis={analysis} selection={selection} onAdd={addHit} onAddProject={(id, pv, forKey) => addProject(id, pv, undefined, forKey)}
-          onUseSource={useSource} onLink={link} onUnlink={unlink}
+          onUseSource={useSource} onLink={link} onUnlink={unlink} tagFocus={tagFocus}
+          onTags={(k, tags) => update((p) => (p.entries[k] ? { ...p, entries: { ...p.entries, [k]: { ...p.entries[k], tags } } } : p))}
+          onNotes={(k, notes) => update((p) => (p.entries[k] ? { ...p, entries: { ...p.entries, [k]: { ...p.entries[k], notes: notes || undefined } } } : p))}
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>

@@ -22,6 +22,9 @@ function loadIcon(url: string): Promise<string | null> {
   return p;
 }
 
+/** Icon as a data URL from the core's cache (shared queue + memo). */
+export const loadIconUrl = (url: string) => loadIcon(url);
+
 export function useIcon(url?: string | null): string | null {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {

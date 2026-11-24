@@ -7,5 +7,7 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true, host: "127.0.0.1", watch: { ignored: ["**/src-tauri/**", "**/test-env/**"] } },
   envPrefix: ["VITE_", "TAURI_ENV_"],
-  build: { target: "es2022", sourcemap: false },
+  // The lazily loaded graph chunk is mostly Cytoscape (~575 kB); it's read
+  // from disk by the desktop app, so a larger limit is fine there.
+  build: { target: "es2022", sourcemap: false, chunkSizeWarningLimit: 700 },
 });

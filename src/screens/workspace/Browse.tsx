@@ -118,7 +118,9 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending }
             return (
               <li key={hitKey(h)} id={`hit-${i}`} role="option" aria-selected={i === highlight}
                 className={`hit${i === highlight ? " hit--hl" : ""}${incompatible ? " hit--incompatible" : ""}${selectedId === h.id ? " hit--sel" : ""}`}
-                onMouseEnter={() => setHighlight(i)} onClick={() => onSelect(h)}>
+                onMouseEnter={() => setHighlight(i)} onClick={() => onSelect(h)}
+                draggable={!inPack} onDragStart={(e) => { e.dataTransfer.setData("application/x-mpp-hit", JSON.stringify(h)); e.dataTransfer.effectAllowed = "copy"; }}
+                title={inPack ? undefined : "Drag onto the graph to add it there"}>
                 <Tooltip name={h.name} badge={<span className="row" style={{ gap: 4 }}><SourceBadge source={h.source} />{h.also && <SourceBadge source={h.also.source} />}</span>} lines={[
                   h.summary, `${fmtCompact.format(downloads)} downloads${h.also ? " across both sites" : ""}`, `Updated ${fmtDate(h.updated)}`, `License: ${h.license ?? "unknown"}`,
                   ...(h.distributionBlocked ? ["Author blocks third-party downloads: launchers ask you to fetch it by hand"] : []),

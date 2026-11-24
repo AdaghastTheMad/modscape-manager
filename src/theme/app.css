@@ -98,3 +98,25 @@
 .export-list ul { margin: 6px 0 0; padding-left: 18px; max-height: 200px; overflow: auto; font-size: 13px; }
 .dropped-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; font-size: 13px; }
 .dropped-list li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ---------- graph (M7) ---------- */
+.workspace--graph { grid-template-columns: minmax(260px, 0.75fr) minmax(480px, 2fr) minmax(300px, 0.9fr); }
+.graph-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.graph-tools { flex: none; gap: var(--space-2); font-size: 12px; }
+.graph-tools .mc-select { min-height: 26px; font-size: 12px; max-width: 200px; text-overflow: ellipsis; }
+.graph-canvas { flex: 1; min-height: 300px; background: #121217; border: 2px solid #000;
+  background-image: linear-gradient(#ffffff06 1px, transparent 1px), linear-gradient(90deg, #ffffff06 1px, transparent 1px); background-size: 24px 24px; }
+.graph-empty { position: absolute; inset: 40px 0 24px; pointer-events: none; }
+.graph-legend { flex: none; display: flex; gap: var(--space-3); font-size: 11px; flex-wrap: wrap; }
+.lg { display: inline-block; width: 22px; height: 0; vertical-align: middle; border-top: 2px solid #8e8e96; margin-right: 4px; }
+.lg--opt { border-top-style: dashed; }
+.lg--inc { border-top: 3px solid var(--redstone); }
+.graph-menu { position: absolute; z-index: 20; padding: 6px; display: flex; flex-direction: column; gap: 2px; min-width: 200px; }
+.graph-menu button { all: unset; cursor: pointer; padding: 3px 6px; font-size: 13px; }
+.graph-menu button:hover, .graph-menu button:focus-visible { background: #3a2a66; }
+.graph-menu button.danger { color: var(--redstone); }
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 0 6px; border: 1px solid var(--tooltip-purple); background: #241a40; }
+.tag-chip button { all: unset; cursor: pointer; color: var(--text-dim); font-size: 10px; }
+.tag-input { min-height: 24px; width: 110px; font-size: 12px; padding: 2px 6px; }
+.notes { width: 100%; resize: vertical; font-size: 13px; }
+.graph-bulk { flex: none; gap: var(--space-2); padding: 4px 8px; background: #241a40; border: 2px solid var(--tooltip-purple); font-size: 12px; }
