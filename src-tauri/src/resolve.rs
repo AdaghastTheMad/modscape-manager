@@ -745,29 +745,9 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
     for (key, e) in &pack.entries {
         let rb = required_by.remove(key).unwrap_or_default();
         let name = &e.display.name;
-        let client = e.display.client_side.as_deref();
-        let server = e.display.server_side.as_deref();
-        if server == Some("unsupported") && client != Some("unsupported") {
-            issues.push(Issue {
-                id: format!("client_only:{key}"),
-                severity: Severity::Info,
-                kind: "client_only",
-                entry_key: Some(key.clone()),
-                other_key: None,
-                message: format!("{name} is client-only. Leave it out of a server install."),
-                fix: None,
-            });
-        } else if client == Some("unsupported") && server != Some("unsupported") {
-            issues.push(Issue {
-                id: format!("server_only:{key}"),
-                severity: Severity::Info,
-                kind: "server_only",
-                entry_key: Some(key.clone()),
-                other_key: None,
-                message: format!("{name} runs on the server side only: needed for singleplayer and on servers, but not to join a server."),
-                fix: None,
-            });
-        }
+        // No client-only / server-only notes: singleplayer runs both sides, and
+        // client exports install everything (owner's call, M6 review). Sides stay
+        // visible in the details pane; the server-variant export (M13) uses them.
         if complete && e.reason == Reason::Dependency && rb.is_empty() {
             issues.push(Issue {
                 id: format!("unneeded:{key}"),
@@ -1514,8 +1494,7 @@ pub(crate) mod tests {
         let a = block(analyze(&pack, &f, false, NOW));
         let k = kinds(&a);
         assert!(k.contains(&"stale"), "{k:?}");
-        assert!(k.contains(&"server_only"), "{k:?}");
-        assert!(k.contains(&"client_only"), "Sodium is client-only: {k:?}");
+        assert!(!k.contains(&"server_only") && !k.contains(&"client_only"), "side notes are noise: {k:?}");
         assert!(!k.contains(&"unneeded"));
         // Remove Sodium Extra but keep Sodium: Sodium is now unneeded.
         let ek = key_of(&pack, &f, "sodium-extra");

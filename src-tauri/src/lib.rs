@@ -8,6 +8,7 @@ pub mod import;
 pub mod keychain;
 pub mod loaders;
 pub mod model;
+pub mod port;
 pub mod resolve;
 pub mod sources;
 pub mod store;
@@ -320,6 +321,12 @@ async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, l
     Ok(resolve::compatible_files(&vs, &mc_version, loader))
 }
 
+// ---------------- duplicate to another version ----------------
+#[tauri::command]
+async fn plan_port(state: St<'_>, pack: Pack, target: port::PortTarget) -> AppResult<port::PortPlan> {
+    port::plan_port(&pack, &target, &state.catalog(), &store::now_iso(), || uuid::Uuid::new_v4().to_string()).await
+}
+
 // ---------------- export / import ----------------
 #[tauri::command]
 async fn export_plan(state: St<'_>, pack: Pack, format: export::Format) -> AppResult<export::ExportPlan> {
@@ -538,6 +545,7 @@ pub fn run() {
             loader_versions,
             icon,
             analyze_pack,
+            plan_port,
             export_plan,
             export_pack,
             import_pack_file,

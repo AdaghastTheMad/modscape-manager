@@ -122,13 +122,15 @@ fn cf_loader_id(pack: &Pack) -> String {
     format!("{prefix}-{}", plain_loader_version(pack))
 }
 
-fn side(s: Option<&str>) -> String {
-    match s {
-        Some("required") => "required",
-        Some("unsupported") => "unsupported",
-        _ => "optional",
-    }
-    .into()
+/// Install sides for a file in the pack, learned the hard way in two Prism round-trips:
+/// - Never "unsupported" on the client: singleplayer is an integrated server, so
+///   server-side-only mods (YUNG's structures, Lithostitched…) must be installed too.
+/// - Never "optional" either: launchers treat optional files as extras the
+///   player opts into, and Prism leaves them unticked, so libraries went missing.
+/// So every file is required on the client, and only mods that can't run on a
+/// server are marked unsupported there (server exports skip them).
+pub fn export_env(server_side: Option<&str>) -> Env {
+    Env { client: "required".into(), server: if server_side == Some("unsupported") { "unsupported" } else { "required" }.into() }
 }
 
 fn host_ok(url: &str) -> bool {
@@ -216,16 +218,7 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
                 continue;
             }
         }
-        // Server-side-only mods (client "unsupported") must still be installed on
-        // clients: singleplayer runs an integrated server. So they're exported as
-        // client "optional"; launchers skip "unsupported" files on client installs.
-        let env = (e.display.client_side.is_some() || e.display.server_side.is_some()).then(|| {
-            let mut env = Env { client: side(e.display.client_side.as_deref()), server: side(e.display.server_side.as_deref()) };
-            if env.client == "unsupported" && env.server != "unsupported" {
-                env.client = "optional".into();
-            }
-            env
-        });
+        let env = Some(export_env(e.display.server_side.as_deref()));
         files.push(ExportFile {
             key: k,
             name,
@@ -481,7 +474,8 @@ mod tests {
         assert_eq!(json["dependencies"]["fabric-loader"], "0.20.1");
         let sodium = json["files"].as_array().unwrap().iter().find(|x| x["path"].as_str().unwrap().contains("sodium-fabric")).expect("sodium file");
         assert_eq!(sodium["env"]["server"], "unsupported", "Sodium is client-only");
-        assert!(json["files"].as_array().unwrap().iter().all(|x| x["env"]["client"] != "unsupported"), "nothing may be skipped on a client install");
+        assert!(json["files"].as_array().unwrap().iter().all(|x| x["env"]["client"] == "required"), "every file installs on clients");
+        assert!(json["files"].as_array().unwrap().iter().all(|x| x["env"]["server"] != "optional"), "no opt-in files");
 
         // Write, then import it back: same projects, pinned to the same files.
         let out = tmp("pack.mrpack");
@@ -532,6 +526,17 @@ mod tests {
         let cloth = cf.files.iter().find(|x| x.key == "cfonly").unwrap();
         assert!(m["files"].as_array().unwrap().iter().any(|x| x["projectID"] == 348521 && x["fileID"].to_string() == cloth.file_id));
         assert_eq!(m["author"], "", "no personal details in exports");
+    }
+
+    #[test]
+    fn env_is_never_optional_or_client_unsupported() {
+        // Round-trip 1: client "unsupported" was skipped by Prism. Round-trip 2:
+        // "optional" files were left unticked in Prism's import dialog.
+        for (server, want) in [(Some("unsupported"), "unsupported"), (Some("optional"), "required"), (Some("required"), "required"), (None, "required")] {
+            let e = export_env(server);
+            assert_eq!(e.client, "required");
+            assert_eq!(e.server, want, "{server:?}");
+        }
     }
 
     #[test]

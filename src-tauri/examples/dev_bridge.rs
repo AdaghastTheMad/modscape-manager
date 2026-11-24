@@ -80,6 +80,9 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         }
         "dev_import_from" => to_val(modpack_planner_lib::import_file_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
         "dev_import_instance" => to_val(modpack_planner_lib::import_instance_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
+        "plan_port" => to_val(
+            modpack_planner_lib::port::plan_port(&arg(a, "pack")?, &arg(a, "target")?, &st.catalog(), &store::now_iso(), || uuid::Uuid::new_v4().to_string()).await,
+        ),
         "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
         "entry_versions" => {
             let (mc, loader): (String, _) = (arg(a, "mcVersion")?, arg(a, "loader")?);

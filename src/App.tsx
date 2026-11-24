@@ -22,7 +22,7 @@ export default function App() {
       </header>
       <main className="app-main">
         {screen === "packs" && (openPack
-          ? <Workspace key={openPack} packId={openPack} onClose={() => setOpenPack(null)} />
+          ? <Workspace key={openPack} packId={openPack} onClose={() => setOpenPack(null)} onOpen={setOpenPack} />
           : <Packs onOpen={setOpenPack} />)}
         {screen === "kit" && <Kit />}
         {screen === "settings" && <Settings />}

@@ -266,6 +266,17 @@ pub fn normalize(pack: &mut Pack) -> AppResult<Vec<String>> {
     Ok(notes)
 }
 
+/// Same rule as the UI's `isLibrary`: the user's override wins; otherwise a
+/// mod is a library when "library" is its only category, or it has the tag and
+/// was pulled in as a dependency.
+pub fn is_library(e: &PackEntry) -> bool {
+    if let Some(o) = e.library_override {
+        return o;
+    }
+    let cats = &e.display.categories;
+    cats.iter().any(|c| c == "library") && (cats.iter().all(|c| c == "library") || e.reason == Reason::Dependency)
+}
+
 /// Dependencies that become orphans if `removing` is removed: entries added
 /// as dependencies whose every dependent is being removed (transitively).
 /// Entries the user added themselves are never orphans, and an entry that was

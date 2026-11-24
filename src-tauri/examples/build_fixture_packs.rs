@@ -26,12 +26,18 @@ fn main() {
         ("Fixture Fabric 26.1.2", "fabric-26.1.2", "26.1.2", Loader::Fabric, 50usize),
     ] {
         // Optional filter: `cargo run --example build_fixture_packs -- neoforge-1.21.1`
-        if let Some(only) = std::env::args().nth(1) {
+        if let Some(only) = std::env::args().skip(1).find(|a| !a.starts_with("--")) {
             if only != file {
                 continue;
             }
         }
-        let pack = tauri::async_runtime::block_on(build(&st, name, mc, loader, target));
+        // `--export-only`: re-export the saved fixture instead of rebuilding it.
+        let saved = packs_dir.join(format!("{file}.planner.json"));
+        let pack = if std::env::args().any(|a| a == "--export-only") && saved.exists() {
+            model::parse_project(&std::fs::read_to_string(&saved).unwrap()).unwrap().0
+        } else {
+            tauri::async_runtime::block_on(build(&st, name, mc, loader, target))
+        };
         let json = model::to_project_json(&pack, &store::now_iso()).unwrap();
         std::fs::write(packs_dir.join(format!("{file}.planner.json")), json).unwrap();
         let plan = tauri::async_runtime::block_on(export::plan_export(&pack, &st.catalog(), export::Format::Mrpack));

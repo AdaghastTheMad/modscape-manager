@@ -114,6 +114,46 @@
    "categories": [
     "library"
    ]
+  },
+  "port0000": {
+   "id": "port0000",
+   "slug": "port-mod",
+   "title": "Port Mod",
+   "categories": [
+    "utility"
+   ]
+  },
+  "depOld00": {
+   "id": "depOld00",
+   "slug": "dep-old",
+   "title": "Dep Old",
+   "categories": [
+    "library"
+   ]
+  },
+  "depNew00": {
+   "id": "depNew00",
+   "slug": "dep-new",
+   "title": "Dep New",
+   "categories": [
+    "library"
+   ]
+  },
+  "onlyOld0": {
+   "id": "onlyOld0",
+   "slug": "only-old",
+   "title": "Only Old",
+   "categories": [
+    "decoration"
+   ]
+  },
+  "cf:4444": {
+   "id": "cf:4444",
+   "slug": "only-old",
+   "title": "Only Old",
+   "categories": [
+    "decoration"
+   ]
   }
  },
  "versions": {
@@ -419,6 +459,114 @@
      }
     ],
     "distribution_blocked": true
+   }
+  ],
+  "port0000|1.21.1": [
+   {
+    "id": "portOld",
+    "project_id": "port0000",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": "depOld00",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "port0000|26.1.2": [
+   {
+    "id": "portNew",
+    "project_id": "port0000",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "26.1.2"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": [
+     {
+      "project_id": "depNew00",
+      "version_id": null,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  ],
+  "depOld00|1.21.1": [
+   {
+    "id": "depOldv",
+    "project_id": "depOld00",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
+   }
+  ],
+  "depNew00|26.1.2": [
+   {
+    "id": "depNewv",
+    "project_id": "depNew00",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "26.1.2"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
+   }
+  ],
+  "onlyOld0|1.21.1": [
+   {
+    "id": "onlyOldv",
+    "project_id": "onlyOld0",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "1.21.1"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
+   }
+  ],
+  "cf:4444|26.1.2": [
+   {
+    "id": "cf:44440",
+    "project_id": "cf:4444",
+    "version_number": "1.0",
+    "version_type": "release",
+    "date_published": "2026-10-01T00:00:00Z",
+    "game_versions": [
+     "26.1.2"
+    ],
+    "loaders": [
+     "fabric"
+    ],
+    "dependencies": []
    }
   ]
  },

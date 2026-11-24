@@ -8,11 +8,12 @@ import { Browse } from "./workspace/Browse";
 import { Details, type Selection } from "./workspace/Details";
 import { PackList } from "./workspace/PackList";
 import { ExportDialog } from "./workspace/ExportDialog";
+import { DuplicateDialog } from "./workspace/DuplicateDialog";
 import { SuggestionPicker } from "./workspace/Suggestions";
 
 type AddNotice = { title: string; lines: string[]; suggestions: Suggestion[]; tone: "ok" | "warn" | "error" };
 
-export function Workspace({ packId, onClose }: { packId: string; onClose: () => void }) {
+export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose: () => void; onOpen: (id: string) => void }) {
   const [pack, setPack] = useState<Pack | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [saveState, setSaveState] = useState<"saved" | "pending" | "error">("saved");
@@ -26,6 +27,7 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
   const [matchReview, setMatchReview] = useState<{ results: EntryMatches[]; picked: Map<string, Candidate> } | null>(null);
   const [matching, setMatching] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const dirty = useRef(false);
   const latest = useRef<Pack | null>(null);
@@ -330,6 +332,7 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
         <span className={saveState === "error" ? "err" : "muted"} style={{ fontSize: 12 }} aria-live="polite">
           {saveState === "saved" ? "All changes saved" : saveState === "pending" ? "Saving…" : "Save failed"}
         </span>
+        <Button size="small" onClick={async () => { await flush(); setDuplicating(true); }} title="Copy this pack to another Minecraft version or loader">Duplicate to version…</Button>
         <Button size="small" variant="primary" onClick={async () => { await flush(); setExporting(true); }}>Export…</Button>
       </div>
       {error && <div className="row"><div className="grow"><ErrorNotice error={error} /></div><Button size="small" onClick={() => setError(null)}>Dismiss</Button></div>}
@@ -346,6 +349,7 @@ export function Workspace({ packId, onClose }: { packId: string; onClose: () => 
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {duplicating && <DuplicateDialog pack={pack} onClose={() => setDuplicating(false)} onCreated={(id) => { setDuplicating(false); onOpen(id); }} />}
       {exporting && (
         <ExportDialog pack={pack} onClose={() => setExporting(false)}
           onFixes={(fixes) => fixes.forEach(applyFix)}
