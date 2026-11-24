@@ -1,4 +1,5 @@
 import cytoscape, { type Core, type ElementDefinition, type NodeSingular } from "cytoscape";
+import { acceptDrag, dragged, endDrag } from "../../dnd";
 import fcose from "cytoscape-fcose";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Analysis, SearchHit } from "../../api";
@@ -416,17 +417,17 @@ export function Graph({ pack, analysis, selectedKey, grouping, onGrouping, onSel
       )}
       <div className="graph-canvas" ref={box} role="application"
         aria-label="Dependency graph. Click a mod to highlight its chain; Cmd/Ctrl-click or Shift-drag to select several; double-click for details; right-click for actions; drag to pin. Two-finger scroll pans, pinch zooms."
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mpp-hit") || e.dataTransfer.types.includes("application/x-mpp-payload")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+        onDragOver={acceptDrag}
         onDrop={(e) => {
-          const payload = e.dataTransfer.getData("application/x-mpp-payload");
-          if (payload) { e.preventDefault(); onDropPayload(payload); return; }
-          const raw = e.dataTransfer.getData("application/x-mpp-hit");
+          const d = dragged(e); endDrag();
+          if (!d) return;
+          if (d.kind === "payload") { e.preventDefault(); onDropPayload(d.id); return; }
           const cy = cyRef.current;
-          if (!raw || !cy || !box.current) return;
+          if (!cy || !box.current) return;
           e.preventDefault();
           const r = box.current.getBoundingClientRect();
           const pan = cy.pan(), zoom = cy.zoom();
-          onDropHit(JSON.parse(raw) as SearchHit, { x: (e.clientX - r.left - pan.x) / zoom, y: (e.clientY - r.top - pan.y) / zoom });
+          onDropHit(d.hit, { x: (e.clientX - r.left - pan.x) / zoom, y: (e.clientY - r.top - pan.y) / zoom });
         }} />
       {Object.keys(pack.entries).length === 0 && (
         <div className="graph-empty empty-state"><div><div className="pixel">Nothing to graph yet</div><p>Drag a mod from the search results onto this canvas, or press + to add it.</p></div></div>

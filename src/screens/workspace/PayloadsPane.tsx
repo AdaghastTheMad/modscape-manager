@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { endDrag, startDrag } from "../../dnd";
 import { api, type AppError, type Payload } from "../../api";
 import { Button, ErrorNotice, Panel } from "../../components/kit";
 import type { Pack } from "../../model";
@@ -18,7 +19,7 @@ export function PayloadsPane({ pack, modeSwitch, onOpen }: { pack: Pack; modeSwi
         <ul className="hit-list">
           {(list ?? []).map((p) => (
             <li key={p.id} className="hit" draggable
-              onDragStart={(e) => { e.dataTransfer.setData("application/x-mpp-payload", p.id); e.dataTransfer.effectAllowed = "copy"; }}
+              onDragStart={(e) => startDrag(e, { kind: "payload", id: p.id })} onDragEnd={endDrag}
               title={p.description}>
               <div className="grow">
                 <div className="hit__name">{p.name}</div>

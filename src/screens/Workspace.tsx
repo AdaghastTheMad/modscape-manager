@@ -506,7 +506,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Mods" }, { id: "payloads", label: "Payloads" }]} />} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
           onSelect={(h) => { const k = findHit(pack, h); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />}
         <PackList pack={pack} analysis={analysis} analyzing={analyzing} undo={undo} notice={noticeEl}
-          onDropPayload={(id) => setPayloadDialog({ id })}
+          onDropPayload={(id) => setPayloadDialog({ id })} onDropHit={(h) => addHit(h)}
           onSaveAsPayload={() => { setSavePayloadName(`${pack.name} mods`); setSavePayloadKeys(Object.keys(pack.entries)); }}
           updates={updates.length > 0 && (
             <Notice title={updates.length === 1 ? `Payload "${updates[0].name}" was updated` : `${updates.length} payloads were updated`}>

@@ -147,3 +147,6 @@
 .plan-row--noBuild .plan-row__mark { color: var(--redstone); }
 .plan-row--noBuild, .plan-row--notYet { opacity: 0.75; }
 .removed-box { border-left: 3px solid var(--redstone); padding-left: 8px; }
+/* WKWebView: drag the whole row, never just its icon. */
+.hit[draggable="true"] { -webkit-user-drag: element; }
+.mc-slot img { -webkit-user-drag: none; }

@@ -64,6 +64,18 @@ export function ModPicker({ onPick, onClose, placeholder = "Search Modrinth and 
   );
 }
 
+// ---------------------------------------------------------------- reordering
+const swap = <T,>(xs: T[], i: number, d: -1 | 1): T[] => { const c = [...xs]; [c[i], c[i + d]] = [c[i + d], c[i]]; return c; };
+type Mover = { onMove: (d: -1 | 1) => void; first: boolean; last: boolean; what: string };
+function MoveButtons({ onMove, first, last, what }: Mover) {
+  return (
+    <span className="row" style={{ gap: 2 }}>
+      <Button size="small" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${what} up`} title="Move up">↑</Button>
+      <Button size="small" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${what} down`} title="Move down">↓</Button>
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------- slot editor
 function CandidateRow({ c, index, count, onChange, onMove, onRemove }: {
   c: PCandidate; index: number; count: number; onChange: (c: PCandidate) => void; onMove: (d: -1 | 1) => void; onRemove: () => void;
@@ -95,7 +107,7 @@ function CandidateRow({ c, index, count, onChange, onMove, onRemove }: {
   );
 }
 
-function SlotEditor({ slot, onChange, onRemove }: { slot: PSlot; onChange: (s: PSlot) => void; onRemove: () => void }) {
+function SlotEditor({ slot, onChange, onRemove, mover }: { slot: PSlot; onChange: (s: PSlot) => void; onRemove: () => void; mover?: Mover }) {
   const [adding, setAdding] = useState(false);
   const set = (cands: PCandidate[]) => onChange({ ...slot, candidates: cands });
   const move = (i: number, d: -1 | 1) => { const c = [...slot.candidates]; [c[i], c[i + d]] = [c[i + d], c[i]]; set(c); };
@@ -105,6 +117,7 @@ function SlotEditor({ slot, onChange, onRemove }: { slot: PSlot; onChange: (s: P
         <input className="mc-input slot-label" placeholder={slot.candidates[0]?.name ?? "Slot label"} value={slot.label}
           onChange={(e) => onChange({ ...slot, label: e.target.value })} aria-label="Slot label" />
         <span className="grow muted" style={{ fontSize: 12 }}>{slot.candidates.length > 1 ? "first candidate that fits the pack and has a build wins" : ""}</span>
+        {mover && <MoveButtons {...mover} />}
         <Button size="small" onClick={() => setAdding(true)}>+ Fallback</Button>
         <Button size="small" variant="danger" onClick={onRemove} aria-label="Remove slot">Remove</Button>
       </div>
@@ -125,7 +138,8 @@ function SlotList({ slots, onChange, addLabel }: { slots: PSlot[]; onChange: (s:
   return (
     <div className="stack" style={{ gap: 4 }}>
       {slots.map((s, i) => (
-        <SlotEditor key={s.id} slot={s} onChange={(n) => onChange(slots.map((x, j) => (j === i ? n : x)))} onRemove={() => onChange(slots.filter((_, j) => j !== i))} />
+        <SlotEditor key={s.id} slot={s} onChange={(n) => onChange(slots.map((x, j) => (j === i ? n : x)))} onRemove={() => onChange(slots.filter((_, j) => j !== i))}
+          mover={slots.length > 1 ? { onMove: (d) => onChange(swap(slots, i, d)), first: i === 0, last: i === slots.length - 1, what: s.label || s.candidates[0]?.name || "mod" } : undefined} />
       ))}
       {adding ? <ModPicker onClose={() => setAdding(false)} onPick={(c) => { onChange([...slots, { id: uid(), label: "", candidates: [c] }]); setAdding(false); }} />
         : <div><Button size="small" onClick={() => setAdding(true)}>{addLabel}</Button></div>}
@@ -133,7 +147,7 @@ function SlotList({ slots, onChange, addLabel }: { slots: PSlot[]; onChange: (s:
   );
 }
 
-function ChoiceEditor({ item, onChange, onRemove }: { item: Extract<PItem, { kind: "choice" }>; onChange: (i: PItem) => void; onRemove: () => void }) {
+function ChoiceEditor({ item, onChange, onRemove, mover }: { item: Extract<PItem, { kind: "choice" }>; onChange: (i: PItem) => void; onRemove: () => void; mover?: Mover }) {
   const setOpt = (i: number, o: PChoiceOption) => onChange({ ...item, options: item.options.map((x, j) => (j === i ? o : x)) });
   return (
     <div className="choice-ed">
@@ -141,6 +155,7 @@ function ChoiceEditor({ item, onChange, onRemove }: { item: Extract<PItem, { kin
         <span className="pixel">One of:</span>
         <input className="mc-input slot-label" value={item.label} onChange={(e) => onChange({ ...item, label: e.target.value })} placeholder="Choice label" aria-label="Choice label" />
         <span className="grow" />
+        {mover && <MoveButtons {...mover} />}
         <Button size="small" onClick={() => onChange({ ...item, options: [...item.options, { id: uid(), label: `Option ${item.options.length + 1}`, slots: [] }] })}>+ Option</Button>
         <Button size="small" variant="danger" onClick={onRemove}>Remove choice</Button>
       </div>
@@ -149,6 +164,7 @@ function ChoiceEditor({ item, onChange, onRemove }: { item: Extract<PItem, { kin
           <div className="row">
             <input className="mc-input slot-label" value={o.label} onChange={(e) => setOpt(i, { ...o, label: e.target.value })} aria-label="Option label" />
             <span className="grow" />
+            {item.options.length > 1 && <MoveButtons onMove={(d) => onChange({ ...item, options: swap(item.options, i, d) })} first={i === 0} last={i === item.options.length - 1} what={`option ${o.label}`} />}
             <Button size="small" variant="danger" onClick={() => onChange({ ...item, options: item.options.filter((_, j) => j !== i) })}>Remove option</Button>
           </div>
           <SlotList slots={o.slots} onChange={(slots) => setOpt(i, { ...o, slots })} addLabel="+ Mod in this option" />
@@ -227,9 +243,15 @@ function PayloadEditor({ initial, all, onSaved, onDeleted }: { initial: Payload;
         </details>
       )}
       <div className="stack">
-        {p.items.map((it, i) => it.kind === "mod"
-          ? <SlotEditor key={it.id} slot={it} onChange={(s) => setItem(i, { kind: "mod", ...s })} onRemove={() => removeItem(i)} />
-          : <ChoiceEditor key={it.id} item={it} onChange={(n) => setItem(i, n)} onRemove={() => removeItem(i)} />)}
+        {p.items.map((it, i) => {
+          const mover: Mover | undefined = p.items.length > 1 ? {
+            onMove: (d) => edit((x) => ({ ...x, items: swap(x.items, i, d) })), first: i === 0, last: i === p.items.length - 1,
+            what: it.label || (it.kind === "mod" ? it.candidates[0]?.name : "choice") || "item",
+          } : undefined;
+          return it.kind === "mod"
+            ? <SlotEditor key={it.id} slot={it} onChange={(s) => setItem(i, { kind: "mod", ...s })} onRemove={() => removeItem(i)} mover={mover} />
+            : <ChoiceEditor key={it.id} item={it} onChange={(n) => setItem(i, n)} onRemove={() => removeItem(i)} mover={mover} />;
+        })}
         {p.items.length === 0 && <p className="muted">No mods yet. Add one below, or nest other payloads above.</p>}
         {adding ? <ModPicker onClose={() => setAdding(false)} onPick={(c) => { edit((x) => ({ ...x, items: [...x.items, { kind: "mod", id: uid(), label: "", candidates: [c] }] })); setAdding(false); }} /> : (
           <div className="row">

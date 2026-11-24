@@ -35,7 +35,7 @@ export function Slot({ src, label, size = 48, selected, error }:
   return (
     <div className={cx("mc-slot", selected && "mc-slot--selected", error && "mc-slot--error")} style={{ ["--size" as string]: `${size}px` }}
       role="img" aria-label={label}>
-      {src && !broken ? <img src={src} alt="" onError={() => setBroken(true)} /> : <span className="mc-slot__glyph" aria-hidden>{glyph}</span>}
+      {src && !broken ? <img src={src} alt="" draggable={false} onError={() => setBroken(true)} /> : <span className="mc-slot__glyph" aria-hidden>{glyph}</span>}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import type { Analysis, Fix, Issue, Severity, Suggestion } from "../../api";
+import { acceptDrag, dragged, endDrag } from "../../dnd";
+import type { Analysis, Fix, Issue, SearchHit, Severity, Suggestion } from "../../api";
 import { Button, ModIcon, Notice, Panel, Select, SourceBadge, Tabs, Tooltip } from "../../components/kit";
 import { SuggestionPicker } from "./Suggestions";
 import { GROUPINGS, groupKey, groupRank, groupTitle, isLibraryGroup, type Grouping } from "../../grouping";
@@ -81,14 +82,14 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
 
 export type PackView = "list" | "graph";
 
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onSaveAsPayload, updates }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onDropHit, onSaveAsPayload, updates }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
   onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
   onCrossCheck: (v: boolean) => void;
   view: PackView; onView: (v: PackView) => void; graph: React.ReactNode;
   grouping: Grouping; onGrouping: (g: Grouping) => void;
-  onDropPayload: (id: string) => void; onSaveAsPayload: () => void; updates: React.ReactNode;
+  onDropPayload: (id: string) => void; onDropHit: (h: SearchHit) => void; onSaveAsPayload: () => void; updates: React.ReactNode;
 }) {
   const by = grouping;
   const issuesByEntry = useMemo(() => {
@@ -156,10 +157,10 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
         )}
       </div>
       {view === "graph" ? graph : <div className="pane__body stack"
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mpp-payload")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
-        onDrop={(e) => { const id = e.dataTransfer.getData("application/x-mpp-payload"); if (id) { e.preventDefault(); onDropPayload(id); } }}>
+        onDragOver={acceptDrag}
+        onDrop={(e) => { const d = dragged(e); endDrag(); if (!d) return; e.preventDefault(); if (d.kind === "payload") onDropPayload(d.id); else onDropHit(d.hit); }}>
         {count === 0 ? (
-          <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Drop a payload here, or search on the left and press + (or Enter). Dependencies come along automatically.</p></div></div>
+          <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Drop a payload or a mod here, or search on the left and press + (or Enter). Dependencies come along automatically.</p></div></div>
         ) : groups.map(([g, list]) => (
           <section key={g} className={isLibraryGroup(g) ? "group group--lib" : "group"}>
             <h3 className="group__title">{groupTitle(g, by)} <span className="muted">({list.length})</span></h3>

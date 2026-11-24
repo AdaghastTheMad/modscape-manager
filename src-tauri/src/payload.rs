@@ -132,8 +132,33 @@ impl Candidate {
 }
 
 /// Content fingerprint: what counts as "the payload changed".
+/// Order of items, options and slots is presentation only (moving them around
+/// shouldn't send every pack an "updated" notice); candidate order is not,
+/// since it's the fallback priority.
 fn content_of(p: &Payload) -> Value {
-    serde_json::json!({ "items": p.items, "includes": p.includes })
+    fn sort_by_id(v: &mut Value) {
+        match v {
+            Value::Object(m) => {
+                for (k, x) in m.iter_mut() {
+                    if k != "candidates" { sort_by_id(x); }
+                }
+                if let Some(Value::Array(c)) = m.get_mut("candidates") {
+                    for x in c { sort_by_id(x); }
+                }
+            }
+            Value::Array(xs) => {
+                for x in xs.iter_mut() { sort_by_id(x); }
+                xs.sort_by(|a, b| {
+                    let id = |v: &Value| v.get("id").and_then(Value::as_str).map(str::to_owned).unwrap_or_else(|| v.to_string());
+                    id(a).cmp(&id(b))
+                });
+            }
+            _ => {}
+        }
+    }
+    let mut v = serde_json::json!({ "items": p.items, "includes": p.includes });
+    sort_by_id(&mut v);
+    v
 }
 
 /// Normalises a payload before saving; bumps `version` when its contents
@@ -721,6 +746,17 @@ mod tests {
         changed.items.push(PayloadItem::Mod(slot("s2", vec![cand("Lithium", "gvQqBUqZ")])));
         prepare_for_save(&mut changed, Some(&prev), "t3").unwrap();
         assert_eq!(changed.version, 2);
+        let mut moved = changed.clone();
+        moved.items.reverse();
+        prepare_for_save(&mut moved, Some(&changed), "t4").unwrap();
+        assert_eq!(moved.version, 2, "reordering items alone isn't a new version");
+        let mut refallback = changed.clone();
+        if let PayloadItem::Mod(s) = &mut refallback.items[0] { s.candidates.push(cand("Embeddium", "sk9rgfiA")); }
+        prepare_for_save(&mut refallback, Some(&changed), "t5").unwrap();
+        let mut swapped = refallback.clone();
+        if let PayloadItem::Mod(s) = &mut swapped.items[0] { s.candidates.reverse(); }
+        prepare_for_save(&mut swapped, Some(&refallback), "t6").unwrap();
+        assert_eq!(swapped.version, refallback.version + 1, "fallback order is content");
         let mut nameless = p.clone();
         nameless.name = " ".into();
         assert!(prepare_for_save(&mut nameless, None, "t").is_err());
