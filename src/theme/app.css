@@ -120,3 +120,30 @@
 .tag-input { min-height: 24px; width: 110px; font-size: 12px; padding: 2px 6px; }
 .notes { width: 100%; resize: vertical; font-size: 13px; }
 .graph-bulk { flex: none; gap: var(--space-2); padding: 4px 8px; background: #241a40; border: 2px solid var(--tooltip-purple); font-size: 12px; }
+
+/* ---------- payloads (M8) ---------- */
+.payloads-screen { display: grid; grid-template-columns: minmax(260px, 0.6fr) 1.6fr; gap: var(--space-3); height: 100%; min-height: 480px; }
+.slot-ed, .choice-ed { border: 2px solid #000; background: #1b1b22; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.choice-ed { border-color: var(--tooltip-purple); }
+.option-ed { border-left: 3px solid #3a2a66; padding-left: 8px; display: flex; flex-direction: column; gap: 4px; }
+.option-ed--common { border-left-color: var(--stone-grey); }
+.slot-label { min-height: 26px; font-size: 13px; padding: 2px 6px; max-width: 260px; }
+.cand-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cand { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; flex-wrap: wrap; }
+.cand__n { width: 18px; text-align: right; }
+.chip { all: unset; cursor: pointer; font-size: 10px; padding: 0 4px; border: 1px solid var(--stone-grey); color: var(--text-dim); }
+.chip[aria-pressed="true"] { border-color: var(--diamond); color: var(--diamond); }
+.chip:focus-visible { outline: 2px solid var(--diamond); }
+.versions { min-height: 22px; width: 110px; font-size: 11px; padding: 1px 4px; }
+.mini-badge { font-family: var(--font-pixel); font-size: 9px; border: 1px solid currentColor; padding: 0 3px; margin-left: 4px; color: var(--text-dim); }
+.mini-badge.mr { color: var(--badge-modrinth); }
+.mini-badge.cf { color: var(--badge-curseforge); }
+.mod-picker { border: 1px dashed var(--stone-grey); padding: 6px; }
+.choice-pick { border-left: 3px solid var(--tooltip-purple); padding-left: 8px; display: flex; flex-direction: column; gap: 4px; }
+.plan-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow: auto; font-size: 13px; }
+.plan-row { display: flex; align-items: center; gap: var(--space-2); padding: 2px 4px; }
+.plan-row__mark { width: 16px; text-align: center; font-family: var(--font-pixel); }
+.plan-row--inPack .plan-row__mark { color: var(--emerald); }
+.plan-row--noBuild .plan-row__mark { color: var(--redstone); }
+.plan-row--noBuild, .plan-row--notYet { opacity: 0.75; }
+.removed-box { border-left: 3px solid var(--redstone); padding-left: 8px; }

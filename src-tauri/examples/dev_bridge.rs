@@ -83,6 +83,22 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         "plan_port" => to_val(
             modpack_planner_lib::port::plan_port(&arg(a, "pack")?, &arg(a, "target")?, &st.catalog(), &store::now_iso(), || uuid::Uuid::new_v4().to_string()).await,
         ),
+        "list_payloads" => to_val(st.db.all_payloads()),
+        "save_payload" => to_val(modpack_planner_lib::save_payload_impl(st, arg(a, "payload")?)),
+        "delete_payload" => to_val(st.db.delete_payload(&arg::<String>(a, "id")?)),
+        "restore_starter_payloads" => to_val(modpack_planner_lib::payload::seed_starters(&st.db, &store::now_iso(), true)),
+        "plan_payload" => {
+            let ch: Option<std::collections::HashMap<String, String>> = arg(a, "choices")?;
+            to_val(modpack_planner_lib::plan_payload_impl(st, &arg(a, "pack")?, &arg::<String>(a, "payloadId")?, ch.unwrap_or_default()).await)
+        }
+        "payload_from_entries" => to_val(
+            modpack_planner_lib::payload::from_entries(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?, &arg::<String>(a, "name")?, &store::now_iso())
+                .and_then(|p| modpack_planner_lib::save_payload_impl(st, p)),
+        ),
+        "payload_updates" => {
+            let all = st.db.all_payloads().map_err(|e| serde_json::to_value(e).unwrap())?.into_iter().map(|p| (p.id.clone(), p)).collect();
+            Ok(serde_json::to_value(modpack_planner_lib::payload::updates_for(&arg(a, "pack")?, &all)).unwrap())
+        }
         "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
         "entry_versions" => {
             let (mc, loader): (String, _) = (arg(a, "mcVersion")?, arg(a, "loader")?);
@@ -111,6 +127,7 @@ fn test_env_path(rel: &str) -> Result<std::path::PathBuf, Value> {
 
 fn main() {
     let st = AppState::new(store::Db::memory());
+    modpack_planner_lib::payload::seed_starters(&st.db, &store::now_iso(), false).unwrap();
     // Never touch the OS keychain from a dev tool: CurseForge stays off here.
     st.curseforge.disable_keychain();
     let server = tiny_http::Server::http("127.0.0.1:1421").expect("bind 127.0.0.1:1421");

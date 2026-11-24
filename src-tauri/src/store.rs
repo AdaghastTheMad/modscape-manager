@@ -84,6 +84,17 @@ const MIGRATIONS: &[&str] = &[
         content_type TEXT,
         body BLOB NOT NULL
      );",
+    // v2: payloads (M8) and a small key/value table for one-time setup flags.
+    "CREATE TABLE payloads (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        json TEXT NOT NULL
+     );
+     CREATE TABLE meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+     );",
 ];
 
 impl Db {
@@ -167,6 +178,45 @@ impl Db {
 
     pub fn delete_pack(&self, id: &str) -> AppResult<()> {
         self.with(|c| c.execute("DELETE FROM packs WHERE id = ?1", [id]).map(|_| ()))
+    }
+
+    // ---------------- payloads ----------------
+    pub fn put_payload(&self, p: &crate::payload::Payload) -> AppResult<()> {
+        let json = serde_json::to_string(p).map_err(|e| AppError::Invalid(e.to_string()))?;
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO payloads (id, name, updated_at, json) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(id) DO UPDATE SET name=?2, updated_at=?3, json=?4",
+                params![p.id, p.name, p.updated_at, json],
+            )
+            .map(|_| ())
+        })
+    }
+
+    pub fn get_payload(&self, id: &str) -> AppResult<Option<crate::payload::Payload>> {
+        let json: Option<String> = self.with(|c| c.query_row("SELECT json FROM payloads WHERE id = ?1", [id], |r| r.get(0)).optional())?;
+        json.map(|j| serde_json::from_str(&j).map_err(|e| AppError::Storage(format!("Saved payload is unreadable: {e}")))).transpose()
+    }
+
+    pub fn all_payloads(&self) -> AppResult<Vec<crate::payload::Payload>> {
+        let rows: Vec<String> = self.with(|c| {
+            let mut st = c.prepare("SELECT json FROM payloads ORDER BY name COLLATE NOCASE")?;
+            let r = st.query_map([], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+            Ok(r)
+        })?;
+        Ok(rows.into_iter().filter_map(|j| serde_json::from_str(&j).ok()).collect())
+    }
+
+    pub fn delete_payload(&self, id: &str) -> AppResult<()> {
+        self.with(|c| c.execute("DELETE FROM payloads WHERE id = ?1", [id]).map(|_| ()))
+    }
+
+    pub fn meta_get(&self, key: &str) -> AppResult<Option<String>> {
+        self.with(|c| c.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional())
+    }
+
+    pub fn meta_set(&self, key: &str, value: &str) -> AppResult<()> {
+        self.with(|c| c.execute("INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=?2", params![key, value]).map(|_| ()))
     }
 
     // ---------------- API cache ----------------

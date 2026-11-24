@@ -7,6 +7,16 @@ export type ChannelPolicy = "stable" | "newest";
 export type EntryKind = "mod" | "resourcepack" | "shader" | "datapack";
 export type Reason = "user" | "dependency" | "payload";
 
+/** A payload candidate from a search hit (both site ids when the hit is merged). */
+export function candidateFromHit(h: SearchHit): import("./api").PCandidate {
+  const c: import("./api").PCandidate = { name: h.name, iconUrl: h.iconUrl ?? undefined };
+  for (const [src, id] of [[h.source, h.id], [h.also?.source, h.also?.id]] as const) {
+    if (src === "modrinth" && id) c.modrinthId = id;
+    if (src === "curseforge" && id) c.curseforgeId = Number(id);
+  }
+  return c;
+}
+
 export interface ModRef { modrinthId?: string; curseforgeId?: number; preferred: Source }
 
 export interface EntryDisplay {

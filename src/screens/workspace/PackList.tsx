@@ -81,13 +81,14 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
 
 export type PackView = "list" | "graph";
 
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onSaveAsPayload, updates }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
   onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
   onCrossCheck: (v: boolean) => void;
   view: PackView; onView: (v: PackView) => void; graph: React.ReactNode;
   grouping: Grouping; onGrouping: (g: Grouping) => void;
+  onDropPayload: (id: string) => void; onSaveAsPayload: () => void; updates: React.ReactNode;
 }) {
   const by = grouping;
   const issuesByEntry = useMemo(() => {
@@ -126,6 +127,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
       <div className="pane__fixed stack">
         <Checks pack={pack} analysis={analysis} analyzing={analyzing} onFix={onFix} onSelect={onSelect} onRecheck={onRecheck}
           suggestions={analysis?.suggestions ?? []} onSuggest={onSuggest} onDismiss={onDismiss} adding={adding} />
+        {updates}
         {notice}
         {undo && <Notice title={undo.label}><Button size="small" onClick={undo.run}>Undo</Button></Notice>}
         {count > 0 && (
@@ -146,15 +148,18 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
         {count > 0 && (
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span className="muted" style={{ fontSize: 12 }}>{count - deps} added by you · {deps} dependenc{deps === 1 ? "y" : "ies"}</span>
+            <Button size="small" onClick={onSaveAsPayload} title="Save the mods you added (not their dependencies) as a reusable payload">Save as payload…</Button>
             <Select aria-label="Group by" value={by} onChange={(e) => onGrouping(e.target.value as Grouping)}>
               {GROUPINGS.map((g) => <option key={g.id} value={g.id}>Group by {g.label}</option>)}
             </Select>
           </div>
         )}
       </div>
-      {view === "graph" ? graph : <div className="pane__body stack">
+      {view === "graph" ? graph : <div className="pane__body stack"
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mpp-payload")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+        onDrop={(e) => { const id = e.dataTransfer.getData("application/x-mpp-payload"); if (id) { e.preventDefault(); onDropPayload(id); } }}>
         {count === 0 ? (
-          <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Search on the left and press + (or Enter) to add mods. Their dependencies come along automatically.</p></div></div>
+          <div className="empty-state"><div><div className="pixel">This pack is empty</div><p>Drop a payload here, or search on the left and press + (or Enter). Dependencies come along automatically.</p></div></div>
         ) : groups.map(([g, list]) => (
           <section key={g} className={isLibraryGroup(g) ? "group group--lib" : "group"}>
             <h3 className="group__title">{groupTitle(g, by)} <span className="muted">({list.length})</span></h3>

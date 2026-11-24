@@ -1,0 +1,1055 @@
+{
+ "_comment": "Starter payloads from the design doc, resolved against Modrinth on 2026-11-24 by scripts/resolve-starter-payloads.py. Name corrections: 'C2ME' -> the separate Fabric/NeoForge projects; 'Keyboard Atlas' -> Keybind Atlas; 'Windy: Configurable' -> Windy; 'Fresh Compat' -> Fresh Compats; 'Fluid and Foolish' -> Fluid & Foolish.",
+ "payloads": [
+  {
+   "id": "starter-performance",
+   "name": "Performance core",
+   "description": "Rendering, memory and chunk-loading optimisations.",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s001",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Sodium",
+       "modrinthId": "AANobbMI",
+       "iconUrl": "https://cdn.modrinth.com/data/AANobbMI/295862f4724dc3f78df3447ad6072b2dcd3ef0c9_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s002",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Lithium",
+       "modrinthId": "gvQqBUqZ",
+       "iconUrl": "https://cdn.modrinth.com/data/gvQqBUqZ/bcc8686c13af0143adf4285d741256af824f70b7_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s003",
+     "label": "",
+     "candidates": [
+      {
+       "name": "FerriteCore",
+       "modrinthId": "uXXizFIs",
+       "iconUrl": "https://cdn.modrinth.com/data/uXXizFIs/222a126f26f8f9ae1eb339f3b767677f18bff31f_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s004",
+     "label": "",
+     "candidates": [
+      {
+       "name": "ModernFix",
+       "modrinthId": "nmDcB62a",
+       "iconUrl": "https://cdn.modrinth.com/data/nmDcB62a/2af94de5e08ae54567ee86b968fc7ce076d9fee5_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s005",
+     "label": "",
+     "candidates": [
+      {
+       "name": "ImmediatelyFast",
+       "modrinthId": "5ZwdcRci",
+       "iconUrl": "https://cdn.modrinth.com/data/5ZwdcRci/e57b6b451425692ac17ad322d5e14bea686a383a_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s006",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Particle Core",
+       "modrinthId": "RSeLon5O",
+       "iconUrl": "https://cdn.modrinth.com/data/RSeLon5O/147110a6a4457b2f287f68fc626771f0f8ef2cde_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s007",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Crash Assistant",
+       "modrinthId": "ix1qq8Ux",
+       "iconUrl": "https://cdn.modrinth.com/data/ix1qq8Ux/0850872f4de156ee91a8b1d1f71615cb4615bfa4_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s008",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Packed Packs",
+       "modrinthId": "8Pq6Exn2",
+       "iconUrl": "https://cdn.modrinth.com/data/8Pq6Exn2/ddfa6a6bc6bc282160fa92b70df711fab6948d01.png"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s009",
+     "label": "C2ME",
+     "candidates": [
+      {
+       "name": "C2ME (Fabric)",
+       "modrinthId": "VSNURh3q",
+       "iconUrl": "https://cdn.modrinth.com/data/VSNURh3q/3c2ce471054466712a44c8758a03e03bb868f93b_96.webp",
+       "loaders": [
+        "fabric",
+        "quilt"
+       ]
+      },
+      {
+       "name": "C2ME (NeoForge)",
+       "modrinthId": "COlSi5iR",
+       "iconUrl": "https://cdn.modrinth.com/data/COlSi5iR/3c2ce471054466712a44c8758a03e03bb868f93b_96.webp",
+       "loaders": [
+        "neoforge"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s010",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Extreme sound muffler",
+       "modrinthId": "5IIKsxiL",
+       "iconUrl": "https://cdn.modrinth.com/data/5IIKsxiL/16e3fd2ee3296e4fc9503df05b73b42011f5505c_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s011",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Cubes Without Borders",
+       "modrinthId": "ETlrkaYF",
+       "iconUrl": "https://cdn.modrinth.com/data/ETlrkaYF/6c1711b4b788b5f25cc1e99ed8805aea94d9e167_96.webp"
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-shaders",
+   "name": "Shaders",
+   "description": "Shader support (Iris brings Sodium with it) and in-game shader search.",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s012",
+     "label": "Iris (Oculus on Forge)",
+     "candidates": [
+      {
+       "name": "Iris Shaders",
+       "modrinthId": "YL57xq9U",
+       "iconUrl": "https://cdn.modrinth.com/data/YL57xq9U/18d0e7f076d3d6ed5bedd472b853909aac5da202_96.webp"
+      },
+      {
+       "name": "Oculus",
+       "modrinthId": "GchcoXML",
+       "iconUrl": "https://cdn.modrinth.com/data/GchcoXML/09ef853cdfd3d467dead4faef37102535a2185d5_96.webp",
+       "loaders": [
+        "forge"
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s013",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Iris & Oculus Search",
+       "modrinthId": "bkAgg84v",
+       "iconUrl": "https://cdn.modrinth.com/data/bkAgg84v/2afbeabadf7e4c81d517f794066466f90d1f2f1a_96.webp"
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-recipes",
+   "name": "Recipe viewer",
+   "description": "Pick one recipe viewer setup; effect descriptions come with every option.",
+   "items": [
+    {
+     "kind": "choice",
+     "id": "recipe-viewer",
+     "label": "Recipe viewer",
+     "options": [
+      {
+       "id": "jei",
+       "label": "JEI",
+       "slots": [
+        {
+         "id": "s014",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Just Enough Items (JEI)",
+           "modrinthId": "u6dRKJwZ",
+           "iconUrl": "https://cdn.modrinth.com/data/u6dRKJwZ/4a3f18ac0d096c9f8e9176984c44be4e58f94c89_96.webp"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "emi",
+       "label": "EMI (standalone)",
+       "slots": [
+        {
+         "id": "s015",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI",
+           "modrinthId": "fRiHVvU7",
+           "iconUrl": "https://cdn.modrinth.com/data/fRiHVvU7/395fe5302b2bab612ef0623509f768f3c5a5ee0f.webp"
+          }
+         ]
+        },
+        {
+         "id": "s016",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMIffect",
+           "modrinthId": "705gWllI",
+           "iconUrl": "https://cdn.modrinth.com/data/705gWllI/e940511ee36de841ea1c55777a27f06cf0cff5e6.png"
+          }
+         ]
+        },
+        {
+         "id": "s017",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Ores",
+           "modrinthId": "sG4TqDb8",
+           "iconUrl": "https://cdn.modrinth.com/data/sG4TqDb8/c5e85bcf5c2ac92ebffbd01f0e97c38fd9bc9743.png"
+          }
+         ]
+        },
+        {
+         "id": "s018",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Loot",
+           "modrinthId": "qbbO7Jns",
+           "iconUrl": "https://cdn.modrinth.com/data/qbbO7Jns/dec44ad1547e774b6fce97a5268f6ff6309ec40a.png"
+          }
+         ]
+        },
+        {
+         "id": "s019",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Enchanting",
+           "modrinthId": "wbWoo11W",
+           "iconUrl": "https://cdn.modrinth.com/data/wbWoo11W/67f7bec961dee33edd40f0578d952b31302606e7.png"
+          }
+         ]
+        },
+        {
+         "id": "s020",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Addon: Extra Mod Integrations",
+           "modrinthId": "bpRHnWUb",
+           "iconUrl": "https://cdn.modrinth.com/data/bpRHnWUb/9add5839ec6212d291da16c50e6fd7327e993b2c.png"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "emi-jei",
+       "label": "EMI + JEI",
+       "slots": [
+        {
+         "id": "s021",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI",
+           "modrinthId": "fRiHVvU7",
+           "iconUrl": "https://cdn.modrinth.com/data/fRiHVvU7/395fe5302b2bab612ef0623509f768f3c5a5ee0f.webp"
+          }
+         ]
+        },
+        {
+         "id": "s022",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Just Enough Items (JEI)",
+           "modrinthId": "u6dRKJwZ",
+           "iconUrl": "https://cdn.modrinth.com/data/u6dRKJwZ/4a3f18ac0d096c9f8e9176984c44be4e58f94c89_96.webp"
+          }
+         ]
+        },
+        {
+         "id": "s023",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMIffect",
+           "modrinthId": "705gWllI",
+           "iconUrl": "https://cdn.modrinth.com/data/705gWllI/e940511ee36de841ea1c55777a27f06cf0cff5e6.png"
+          }
+         ]
+        },
+        {
+         "id": "s024",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Ores",
+           "modrinthId": "sG4TqDb8",
+           "iconUrl": "https://cdn.modrinth.com/data/sG4TqDb8/c5e85bcf5c2ac92ebffbd01f0e97c38fd9bc9743.png"
+          }
+         ]
+        },
+        {
+         "id": "s025",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Loot",
+           "modrinthId": "qbbO7Jns",
+           "iconUrl": "https://cdn.modrinth.com/data/qbbO7Jns/dec44ad1547e774b6fce97a5268f6ff6309ec40a.png"
+          }
+         ]
+        },
+        {
+         "id": "s026",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Enchanting",
+           "modrinthId": "wbWoo11W",
+           "iconUrl": "https://cdn.modrinth.com/data/wbWoo11W/67f7bec961dee33edd40f0578d952b31302606e7.png"
+          }
+         ]
+        },
+        {
+         "id": "s027",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Addon: Extra Mod Integrations",
+           "modrinthId": "bpRHnWUb",
+           "iconUrl": "https://cdn.modrinth.com/data/bpRHnWUb/9add5839ec6212d291da16c50e6fd7327e993b2c.png"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "emi-tmrv",
+       "label": "EMI + TooManyRecipeViewers (JEI emulation)",
+       "slots": [
+        {
+         "id": "s028",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI",
+           "modrinthId": "fRiHVvU7",
+           "iconUrl": "https://cdn.modrinth.com/data/fRiHVvU7/395fe5302b2bab612ef0623509f768f3c5a5ee0f.webp"
+          }
+         ]
+        },
+        {
+         "id": "s029",
+         "label": "",
+         "candidates": [
+          {
+           "name": "TooManyRecipeViewers",
+           "modrinthId": "yFypjcfd",
+           "iconUrl": "https://cdn.modrinth.com/data/yFypjcfd/98b779c866d2de36323c43591756879efee5f1c4_96.webp"
+          }
+         ]
+        },
+        {
+         "id": "s030",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMIffect",
+           "modrinthId": "705gWllI",
+           "iconUrl": "https://cdn.modrinth.com/data/705gWllI/e940511ee36de841ea1c55777a27f06cf0cff5e6.png"
+          }
+         ]
+        },
+        {
+         "id": "s031",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Ores",
+           "modrinthId": "sG4TqDb8",
+           "iconUrl": "https://cdn.modrinth.com/data/sG4TqDb8/c5e85bcf5c2ac92ebffbd01f0e97c38fd9bc9743.png"
+          }
+         ]
+        },
+        {
+         "id": "s032",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Loot",
+           "modrinthId": "qbbO7Jns",
+           "iconUrl": "https://cdn.modrinth.com/data/qbbO7Jns/dec44ad1547e774b6fce97a5268f6ff6309ec40a.png"
+          }
+         ]
+        },
+        {
+         "id": "s033",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Enchanting",
+           "modrinthId": "wbWoo11W",
+           "iconUrl": "https://cdn.modrinth.com/data/wbWoo11W/67f7bec961dee33edd40f0578d952b31302606e7.png"
+          }
+         ]
+        },
+        {
+         "id": "s034",
+         "label": "",
+         "candidates": [
+          {
+           "name": "EMI Addon: Extra Mod Integrations",
+           "modrinthId": "bpRHnWUb",
+           "iconUrl": "https://cdn.modrinth.com/data/bpRHnWUb/9add5839ec6212d291da16c50e6fd7327e993b2c.png"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "common": [
+      {
+       "id": "s035",
+       "label": "",
+       "candidates": [
+        {
+         "name": "Just Enough Effect Descriptions (JEED)",
+         "modrinthId": "EO27GKs1",
+         "iconUrl": "https://cdn.modrinth.com/data/EO27GKs1/0cae90cd5fbb858e267777ef965a499a83b7ddcb_96.webp"
+        }
+       ]
+      },
+      {
+       "id": "s036",
+       "label": "",
+       "candidates": [
+        {
+         "name": "Moderately Enough Effect Descriptions (MEED)",
+         "modrinthId": "1dxbxzCg",
+         "iconUrl": "https://cdn.modrinth.com/data/1dxbxzCg/030a5287edfe95df5dd760618254a52531ffdb43_96.webp"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-qol",
+   "name": "QoL and HUD",
+   "description": "Block info, food stats, inventory and controls helpers.",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s037",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Jade",
+       "modrinthId": "nvQzSEkH",
+       "iconUrl": "https://cdn.modrinth.com/data/nvQzSEkH/b04217bc2b7dc524c4d12f81ff42cc1cefb9b0fc_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s038",
+     "label": "",
+     "candidates": [
+      {
+       "name": "AppleSkin",
+       "modrinthId": "EsAfCjCV",
+       "iconUrl": "https://cdn.modrinth.com/data/EsAfCjCV/icon.png"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s039",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Mouse Tweaks",
+       "modrinthId": "aC3cM3Vq",
+       "iconUrl": "https://cdn.modrinth.com/data/aC3cM3Vq/6c0eaa4e60a9c87f4766f222ff63286f09da32c0_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s040",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Controlling",
+       "modrinthId": "xv94TkTM",
+       "iconUrl": "https://cdn.modrinth.com/data/xv94TkTM/bdb6feb3d04ca37da4ed5aa73fef062a39d8b3e5_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s041",
+     "label": "Keybind Atlas (\"Keyboard Atlas\")",
+     "candidates": [
+      {
+       "name": "Keybind Atlas",
+       "modrinthId": "fokFjwwh",
+       "iconUrl": "https://cdn.modrinth.com/data/fokFjwwh/8c6ed2c03cc9798c404db268f6bbc67fe1b87370.png"
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-maps",
+   "name": "Maps",
+   "description": "Pick one map setup.",
+   "items": [
+    {
+     "kind": "choice",
+     "id": "maps",
+     "label": "Map",
+     "options": [
+      {
+       "id": "xaero",
+       "label": "Xaero's Minimap + World Map + XaeroPlus",
+       "slots": [
+        {
+         "id": "s042",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Xaero's Minimap",
+           "modrinthId": "1bokaNcj",
+           "iconUrl": "https://cdn.modrinth.com/data/1bokaNcj/354080f65407e49f486fcf9c4580e82c45ae63b8_96.webp"
+          }
+         ]
+        },
+        {
+         "id": "s043",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Xaero's World Map",
+           "modrinthId": "NcUtCpym",
+           "iconUrl": "https://cdn.modrinth.com/data/NcUtCpym/354080f65407e49f486fcf9c4580e82c45ae63b8_96.webp"
+          }
+         ]
+        },
+        {
+         "id": "s044",
+         "label": "",
+         "candidates": [
+          {
+           "name": "XaeroPlus",
+           "modrinthId": "EnPUzSTg",
+           "iconUrl": "https://cdn.modrinth.com/data/EnPUzSTg/c1924a4ab8bab6def9aa2304491df7bf49b142d1_96.webp"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "journeymap",
+       "label": "JourneyMap",
+       "slots": [
+        {
+         "id": "s045",
+         "label": "",
+         "candidates": [
+          {
+           "name": "JourneyMap",
+           "modrinthId": "lfHFW1mp",
+           "iconUrl": "https://cdn.modrinth.com/data/lfHFW1mp/a1c571a21a88f6fa59eab67829f216f65ab393ee_96.webp"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "diorama",
+       "label": "Diorama (isometric map/minimap)",
+       "slots": [
+        {
+         "id": "s046",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Diorama",
+           "modrinthId": "kwpTgbCk",
+           "iconUrl": "https://cdn.modrinth.com/data/kwpTgbCk/878184495f64705ac4d69e9ee62b7a0eac2a5139_96.webp"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "common": []
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-distant",
+   "name": "Distant terrain",
+   "description": "Level-of-detail rendering for far terrain. Voxy on Fabric; Roxy brings it to NeoForge 1.21.1.",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s047",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Distant Horizons",
+       "modrinthId": "uCdwusMi",
+       "iconUrl": "https://cdn.modrinth.com/data/uCdwusMi/e716cda9bb568b5373ff76e363fb4c6d7278fba6_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s048",
+     "label": "Voxy (Roxy on NeoForge)",
+     "candidates": [
+      {
+       "name": "voxy",
+       "modrinthId": "fxxUqruK",
+       "iconUrl": "https://cdn.modrinth.com/data/fxxUqruK/2a4159b1ff6ecba43bf895d6abee6f724a0e03c0_96.webp",
+       "loaders": [
+        "fabric",
+        "quilt"
+       ]
+      },
+      {
+       "name": "Roxy",
+       "modrinthId": "Ap78bKTp",
+       "iconUrl": "https://cdn.modrinth.com/data/Ap78bKTp/bd413007e2272caa0daa56fcd8eddb85d6116a9b_96.webp",
+       "loaders": [
+        "neoforge"
+       ]
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-server",
+   "name": "Server-friendly",
+   "description": "Profiling. (Marking client-only mods for removal on server export comes with the server variant, milestone 13.)",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s049",
+     "label": "",
+     "candidates": [
+      {
+       "name": "spark",
+       "modrinthId": "l6YH9Als",
+       "iconUrl": "https://cdn.modrinth.com/data/l6YH9Als/61a777dd08a8447ac93e8b6372e6d27d48cd1e1a_96.webp"
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-aesthetic",
+   "name": "Aesthetic mods",
+   "description": "Particles, ambience and sound.",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s050",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Subtle Effects",
+       "modrinthId": "4q8UOK1d",
+       "iconUrl": "https://cdn.modrinth.com/data/4q8UOK1d/8a5d3febe9a9badba435a3f66a49668d04ada01f_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s051",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Visuality: Reforged",
+       "modrinthId": "z13R7Et1",
+       "iconUrl": "https://cdn.modrinth.com/data/z13R7Et1/15c18a26826388d2f5da4fd7bbfdfa1c41575360.png"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s052",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Particular ✨ Reforged",
+       "modrinthId": "pYFUU6cq",
+       "iconUrl": "https://cdn.modrinth.com/data/pYFUU6cq/152536579fe8e475149273b64cabdef764b3da9f_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s053",
+     "label": "Wakes / Wavify",
+     "candidates": [
+      {
+       "name": "Wakes",
+       "modrinthId": "dlNu0RQY",
+       "iconUrl": "https://cdn.modrinth.com/data/dlNu0RQY/46be95a28f27da8a98e9721b6695703fcec2d7d8_96.webp"
+      },
+      {
+       "name": "Wavify",
+       "modrinthId": "yTjEgNSm",
+       "iconUrl": "https://cdn.modrinth.com/data/yTjEgNSm/ba6e452f9a9bb6be00722a4b527b34c05f8566af_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s054",
+     "label": "Windy (\"Windy: Configurable\")",
+     "candidates": [
+      {
+       "name": "Windy",
+       "modrinthId": "EwYg6C78",
+       "iconUrl": "https://cdn.modrinth.com/data/EwYg6C78/2114520e253341130a8edf3ee2c5be61e0b7103a_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s055",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Sound Physics Remastered",
+       "modrinthId": "qyVF9oeo",
+       "iconUrl": "https://cdn.modrinth.com/data/qyVF9oeo/798fbfae58ec95ad51f3e1d522b43227306c326c.png"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s056",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Sounds",
+       "modrinthId": "ZouiUX7t",
+       "iconUrl": "https://cdn.modrinth.com/data/ZouiUX7t/b6ae84ea14654245f58856722473afeddf72360c_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s057",
+     "label": "ExtraSounds (where available)",
+     "candidates": [
+      {
+       "name": "ExtraSounds",
+       "modrinthId": "uPWCQrVL",
+       "iconUrl": "https://cdn.modrinth.com/data/uPWCQrVL/624a598acc4997ed08fa2f74b7cc404938430fd2_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s058",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Immersive UI",
+       "modrinthId": "9wv7LuMc",
+       "iconUrl": "https://cdn.modrinth.com/data/9wv7LuMc/fac59d2847d87e6b5cb384c302d6c2bcfd0d0c4b_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s059",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Smooth Gui",
+       "modrinthId": "j6yrZogB",
+       "iconUrl": "https://cdn.modrinth.com/data/j6yrZogB/513135473a86464be6f7e3f1218942f142698545_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s060",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Drip Sounds",
+       "modrinthId": "T8MMXTpr",
+       "iconUrl": "https://cdn.modrinth.com/data/T8MMXTpr/d338decae13e71b934605932901921c4d72b8b6f_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s061",
+     "label": "",
+     "candidates": [
+      {
+       "name": "The Sound of Rain",
+       "modrinthId": "8GRDQ9XB",
+       "iconUrl": "https://cdn.modrinth.com/data/8GRDQ9XB/8da9fe7ea83e2ec62f5705f5f51b9ef82e8c2770_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s062",
+     "label": "Presence Footsteps (Tread Lightly where it isn't available)",
+     "candidates": [
+      {
+       "name": "Presence Footsteps",
+       "modrinthId": "rcTfTZr3",
+       "iconUrl": "https://cdn.modrinth.com/data/rcTfTZr3/c08dc581f0bf3b729f86e962fa800463af86e9a2_96.webp"
+      },
+      {
+       "name": "Tread Lightly",
+       "modrinthId": "EZLEVAhb",
+       "iconUrl": "https://cdn.modrinth.com/data/EZLEVAhb/379df5f45e544a80075d4db343ef2b9c7a8c4ffc_96.webp"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s063",
+     "label": "",
+     "candidates": [
+      {
+       "name": "AmbientSounds",
+       "modrinthId": "fM515JnW",
+       "iconUrl": "https://cdn.modrinth.com/data/fM515JnW/9a8eca9c055ec1dd753a7209210fcb22a2d40ff7_96.webp"
+      }
+     ]
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-animation",
+   "name": "Animation mods",
+   "description": "Needs resource-pack support (milestone 11) for the Fresh Animations parts; the mods apply today.",
+   "items": [
+    {
+     "kind": "mod",
+     "id": "s064",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Punchy!",
+       "modrinthId": "8aoMKplv",
+       "iconUrl": "https://cdn.modrinth.com/data/8aoMKplv/a9171ec026d659ccad5c3dff6fdfc80259d63e09.gif"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s065",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Fresh Animations",
+       "modrinthId": "50dA9Sha",
+       "iconUrl": "https://cdn.modrinth.com/data/50dA9Sha/3132c10e9e3c73fde9799720fd3da5561071708c_96.webp",
+       "kind": "resourcepack"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s066",
+     "label": "",
+     "candidates": [
+      {
+       "name": "Fresh Animations: Extensions",
+       "modrinthId": "YAVTU8mK",
+       "iconUrl": "https://cdn.modrinth.com/data/YAVTU8mK/2e83da75469cdec6d4558023cba611443b105c9e_96.webp",
+       "kind": "resourcepack"
+      }
+     ]
+    },
+    {
+     "kind": "mod",
+     "id": "s067",
+     "label": "Fresh Compat",
+     "candidates": [
+      {
+       "name": "Fresh Compats",
+       "modrinthId": "nOD7MgEz",
+       "iconUrl": "https://cdn.modrinth.com/data/nOD7MgEz/b03d99d7ca5ddfa8940cbaea8867c7ba96faa2c1_96.webp",
+       "kind": "resourcepack"
+      }
+     ]
+    },
+    {
+     "kind": "choice",
+     "id": "player-animation",
+     "label": "Player animation",
+     "options": [
+      {
+       "id": "punchy-moves",
+       "label": "Punchy! Moves + Fluid & Foolish",
+       "slots": [
+        {
+         "id": "s068",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Punchy! Moves",
+           "modrinthId": "mzgtK8pY",
+           "iconUrl": "https://cdn.modrinth.com/data/mzgtK8pY/c0e230b5c5060c9bfe0eafb6cb0b258dc3d61e81.gif"
+          }
+         ]
+        },
+        {
+         "id": "s069",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Fluid & Foolish",
+           "modrinthId": "fQdwNxte",
+           "iconUrl": "https://cdn.modrinth.com/data/fQdwNxte/75beab5d4cb0034b7fe6edb4e02fedb3167718f0_96.webp",
+           "kind": "resourcepack"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "fa-player",
+       "label": "Fresh Animations: Player Extension + Just Expressions",
+       "slots": [
+        {
+         "id": "s070",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Fresh Animations: Player Extension",
+           "modrinthId": "TAIMVZCL",
+           "iconUrl": "https://cdn.modrinth.com/data/TAIMVZCL/b3918b1dcedad8987cac3715ec95d00aaadc3a49_96.webp",
+           "kind": "resourcepack"
+          }
+         ]
+        },
+        {
+         "id": "s071",
+         "label": "",
+         "candidates": [
+          {
+           "name": "Just Expressions",
+           "modrinthId": "vPaHlT2U",
+           "iconUrl": "https://cdn.modrinth.com/data/vPaHlT2U/db614979822e991f66f1213b578e08652e282ba0_96.webp",
+           "kind": "resourcepack"
+          }
+         ]
+        }
+       ]
+      }
+     ],
+     "common": []
+    }
+   ],
+   "includes": [],
+   "version": 1,
+   "starter": true
+  },
+  {
+   "id": "starter-survival",
+   "name": "Survival baseline",
+   "description": "Performance + QoL + Maps, as one drop-in (an example of nesting).",
+   "items": [],
+   "includes": [
+    "starter-performance",
+    "starter-qol",
+    "starter-maps"
+   ],
+   "version": 1,
+   "starter": true
+  }
+ ]
+}

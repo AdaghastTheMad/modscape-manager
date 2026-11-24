@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type AddPlan, type Analysis, type AppError, type Candidate, type EntryMatches, type Fix, type SearchHit, type Source, type Suggestion } from "../api";
-import { Button, ErrorNotice, Modal, Notice, Select } from "../components/kit";
+import { Button, ErrorNotice, Input, Modal, Notice, Select, Tabs } from "../components/kit";
 import { typingIn } from "../hooks";
 import { applyPlan, applyPreference, catalogId, entryFromHit, entryName, findByCatalogId, findHit, loaderLabel, nowIso, syncPulledInBy, withSource, type ChannelPolicy, type Pack, type PackEntry, type SourcePreference } from "../model";
 import { ModIcon, SourceBadge } from "../components/kit";
@@ -9,6 +9,9 @@ import { Details, type Selection } from "./workspace/Details";
 import { PackList } from "./workspace/PackList";
 import { ExportDialog } from "./workspace/ExportDialog";
 import { DuplicateDialog } from "./workspace/DuplicateDialog";
+import { PayloadDialog, type PayloadApply } from "./workspace/PayloadDialog";
+import { PayloadsPane } from "./workspace/PayloadsPane";
+import type { PayloadUpdate } from "../api";
 import type { BulkVersionAction, GraphPos } from "./workspace/Graph";
 import type { Grouping } from "../grouping";
 import { usePrefs } from "../prefs";
@@ -154,6 +157,95 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
   // Several picks at once (suggestions): plan each against the pack as it will be
   // after the previous ones, then apply them all in one update.
   const [batchAdding, setBatchAdding] = useState(false);
+  const [browseMode, setBrowseMode] = useState<"mods" | "payloads">("mods");
+  const [payloadDialog, setPayloadDialog] = useState<{ id: string; title?: string } | null>(null);
+  const [savePayloadKeys, setSavePayloadKeys] = useState<string[] | null>(null);
+  const [savePayloadName, setSavePayloadName] = useState("");
+  const [updates, setUpdates] = useState<PayloadUpdate[]>([]);
+
+  // Payloads this pack applied that have changed since.
+  const appliedSig = pack ? JSON.stringify(pack.appliedPayloads) : "";
+  useEffect(() => {
+    if (!latest.current) return;
+    api.payloadUpdates(latest.current).then(setUpdates, () => {});
+  }, [appliedSig, payloadDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Applies a payload preview: each pick is planned against the pack as it
+  // will be after the previous ones (dependencies included), then everything
+  // lands in one update with the payload recorded on its mods.
+  const applyPayload = useCallback(async (a: PayloadApply) => {
+    const start = latest.current;
+    if (!start) return;
+    let p = start;
+    const plans: AddPlan[] = [];
+    const failed: string[] = [];
+    for (const r of a.add) {
+      try {
+        const plan = await api.planAdd(p, r.projectId, null, null, r.altId);
+        plans.push(plan);
+        p = applyPlan(p, plan);
+      } catch (e) { failed.push(`${r.name}: ${(e as AppError).message}`); }
+    }
+    const roots = new Set(plans.map((pl) => pl.rootKey));
+    const pid = a.plan.payloadId;
+    const ids = new Set(a.plan.applied.map(([id]) => id));
+    // Removing mods dropped from the payload also removes dependencies only they needed.
+    let removeKeys = [...a.remove];
+    if (removeKeys.length) {
+      try { removeKeys = [...removeKeys, ...(await api.planRemoval(p, removeKeys))]; } catch { /* just the picked ones */ }
+    }
+    const removedEntries = removeKeys.filter((k) => p.entries[k]).map((k) => [k, p.entries[k]] as const);
+    update((cur) => {
+      let next = plans.reduce(applyPlan, cur);
+      const entries = { ...next.entries };
+      for (const k of removeKeys) delete entries[k];
+      for (const [k, e] of Object.entries(entries)) {
+        if (e.pulledInBy.some((x) => removeKeys.includes(x))) entries[k] = { ...e, pulledInBy: e.pulledInBy.filter((x) => !removeKeys.includes(x)) };
+      }
+      // Kept ones aren't from this payload any more; with no payload left they're your own mods.
+      for (const k of a.untag) {
+        const e = entries[k];
+        if (!e) continue;
+        const payloadIds = e.payloadIds.filter((x) => !ids.has(x));
+        entries[k] = { ...e, payloadIds, reason: e.reason === "payload" && payloadIds.length === 0 ? "user" : e.reason };
+      }
+      for (const k of [...roots, ...a.covers]) {
+        const e = entries[k];
+        if (!e) continue;
+        entries[k] = {
+          ...e,
+          // New to the pack via this payload → "payload"; mods you'd added before keep "user".
+          reason: roots.has(k) && !start.entries[k] ? "payload" : e.reason,
+          payloadIds: e.payloadIds.includes(pid) ? e.payloadIds : [...e.payloadIds, pid],
+        };
+      }
+      const applied = new Map(next.appliedPayloads.map((x) => [x.id, x.version]));
+      for (const [id, v] of a.plan.applied) applied.set(id, v);
+      next = { ...next, entries, choices: { ...next.choices, ...a.choices }, appliedPayloads: [...applied].map(([id, version]) => ({ id, version })) };
+      return next;
+    });
+    const deps = plans.flatMap((pl) => pl.additions.filter((x) => x.key !== pl.rootKey).map((x) => x.entry.display.name));
+    if (removedEntries.length) {
+      setUndo({
+        label: `Removed ${removedEntries.length} mod${removedEntries.length === 1 ? "" : "s"} dropped from ${a.plan.name}`,
+        run: () => { update((cur) => ({ ...cur, entries: { ...cur.entries, ...Object.fromEntries(removedEntries.filter(([k]) => !cur.entries[k])) } })); setUndo(null); },
+      });
+    }
+    const added = a.add.length - failed.length;
+    const did = [added && `Added ${added} mod${added === 1 ? "" : "s"}`, removedEntries.length && `removed ${removedEntries.length}`].filter(Boolean).join(", ");
+    setNotice({
+      title: did ? `${did[0].toUpperCase()}${did.slice(1)} (${a.plan.name})` : `Applied ${a.plan.name}`,
+      lines: [
+        ...(removedEntries.length > a.remove.length ? [`Removed ${removedEntries.length - a.remove.length} dependenc${removedEntries.length - a.remove.length === 1 ? "y" : "ies"} nothing else needed.`] : []),
+        ...(a.untag.length ? [`Kept ${a.untag.length} mod${a.untag.length === 1 ? "" : "s"} the payload no longer has.`] : []),
+        ...(deps.length ? [`Also added ${deps.length} required ${deps.length === 1 ? "dependency" : "dependencies"}.`] : []),
+        ...plans.flatMap((pl) => pl.notes),
+        ...failed.map((f) => `Couldn't add ${f}`),
+      ],
+      suggestions: [],
+      tone: failed.length ? "error" : "ok",
+    });
+  }, [update]);
   const addMany = useCallback(async (ids: string[]) => {
     const start = latest.current;
     if (!start || !ids.length || batchAdding) return;
@@ -407,9 +499,25 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
       </div>
       {error && <div className="row"><div className="grow"><ErrorNotice error={error} /></div><Button size="small" onClick={() => setError(null)}>Dismiss</Button></div>}
       <div className={`workspace${view === "graph" ? " workspace--graph" : ""}`}>
-        <Browse pack={pack} onAdd={addHit} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
-          onSelect={(h) => { const k = findHit(pack, h); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />
+        {browseMode === "payloads" ? (
+          <PayloadsPane pack={pack} onOpen={(id) => setPayloadDialog({ id })} modeSwitch={
+            <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Mods" }, { id: "payloads", label: "Payloads" }]} />} />
+        ) : <Browse pack={pack} onAdd={addHit} modeSwitch={
+          <Tabs label="Browse" value={browseMode} onChange={setBrowseMode} tabs={[{ id: "mods", label: "Mods" }, { id: "payloads", label: "Payloads" }]} />} searchRef={searchRef} pending={pending} selectedId={selection?.kind === "hit" ? selection.hit.id : undefined}
+          onSelect={(h) => { const k = findHit(pack, h); setSelection(k ? { kind: "entry", key: k } : { kind: "hit", hit: h }); }} />}
         <PackList pack={pack} analysis={analysis} analyzing={analyzing} undo={undo} notice={noticeEl}
+          onDropPayload={(id) => setPayloadDialog({ id })}
+          onSaveAsPayload={() => { setSavePayloadName(`${pack.name} mods`); setSavePayloadKeys(Object.keys(pack.entries)); }}
+          updates={updates.length > 0 && (
+            <Notice title={updates.length === 1 ? `Payload "${updates[0].name}" was updated` : `${updates.length} payloads were updated`}>
+              {updates.map((u) => (
+                <div key={u.payloadId} className="row" style={{ justifyContent: "space-between" }}>
+                  <span>{u.name} <span className="muted">v{u.appliedVersion} → v{u.currentVersion}</span></span>
+                  <Button size="small" onClick={() => setPayloadDialog({ id: u.payloadId, title: `Pull in changes: ${u.name}` })}>Review</Button>
+                </div>
+              ))}
+            </Notice>
+          )}
           selectedKey={selection?.kind === "entry" ? selection.key : undefined}
           onSelect={(k) => setSelection({ kind: "entry", key: k })} onRemove={remove} onFix={applyFix}
           onRecheck={() => runAnalysis(true)} onSuggest={addMany} onDismiss={dismiss} adding={batchAdding}
@@ -421,7 +529,9 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
               grouping={graphGrouping} onGrouping={setGrouping("graph")} onBulkVersions={bulkVersions} onBulkTag={bulkTag}
               onSelect={(k) => setSelection(k ? { kind: "entry", key: k } : null)} onOpen={(k) => setSelection({ kind: "entry", key: k })}
               onRemove={remove} onTogglePin={togglePin} onTag={(k) => { setSelection({ kind: "entry", key: k }); setTagFocus((n) => n + 1); }}
-              onPositions={setPositions} onDropHit={(h, at) => addHit(h, at)} /></Suspense>
+              onPositions={setPositions} onDropHit={(h, at) => addHit(h, at)}
+              onDropPayload={(id) => setPayloadDialog({ id })}
+              onSaveAsPayload={(keys) => { setSavePayloadName("New payload"); setSavePayloadKeys(keys); }} /></Suspense>
           )} />
         <Details pack={pack} analysis={analysis} selection={selection} onAdd={addHit} onAddProject={(id, pv, forKey) => addProject(id, pv, undefined, forKey)}
           onUseSource={useSource} onLink={link} onUnlink={unlink} tagFocus={tagFocus}
@@ -430,6 +540,25 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {payloadDialog && <PayloadDialog pack={pack} payloadId={payloadDialog.id} title={payloadDialog.title} onClose={() => setPayloadDialog(null)} onApply={applyPayload} />}
+      {savePayloadKeys && (
+        <Modal title="Save as payload" width={460} onClose={() => setSavePayloadKeys(null)}>
+          <form className="stack-lg" onSubmit={async (e) => {
+            e.preventDefault();
+            try { await api.payloadFromEntries(latest.current!, savePayloadKeys, savePayloadName); setSavePayloadKeys(null); setNotice({ title: `Saved payload "${savePayloadName}"`, lines: ["Find it in Browse → Payloads, or edit it on the Payloads tab."], suggestions: [], tone: "ok" }); }
+            catch (err) { setError(err as AppError); }
+          }}>
+            <p className="muted" style={{ margin: 0 }}>
+              {savePayloadKeys.filter((k) => pack.entries[k]?.reason !== "dependency").length} mod(s), with dependencies left out: they come back on their own when the payload is used.
+            </p>
+            <Input label="Payload name" autoFocus value={savePayloadName} onChange={(e) => setSavePayloadName(e.target.value)} />
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Button onClick={() => setSavePayloadKeys(null)}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={!savePayloadName.trim()}>Save payload</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {duplicating && <DuplicateDialog pack={pack} onClose={() => setDuplicating(false)} onCreated={(id) => { setDuplicating(false); onOpen(id); }} />}
       {exporting && (
         <ExportDialog pack={pack} onClose={() => setExporting(false)}

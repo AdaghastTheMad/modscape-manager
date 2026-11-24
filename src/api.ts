@@ -115,6 +115,25 @@ export interface PortReport {
 }
 export interface PortPlan { pack: Pack; report: PortReport }
 
+// ---- payloads ----
+export type EntryKindT = "mod" | "resourcepack" | "shader" | "datapack";
+export interface PCandidate { name: string; modrinthId?: string; curseforgeId?: number; iconUrl?: string; loaders?: Loader[]; mcVersions?: string[]; kind?: EntryKindT }
+export interface PSlot { id: string; label: string; candidates: PCandidate[] }
+export interface PChoiceOption { id: string; label: string; slots: PSlot[] }
+export type PItem = ({ kind: "mod" } & PSlot) | { kind: "choice"; id: string; label: string; options: PChoiceOption[]; common: PSlot[] };
+export interface Payload { id: string; name: string; description: string; items: PItem[]; includes: string[]; version: number; starter: boolean; createdAt: string; updatedAt: string; [extra: string]: unknown }
+export type SlotStatus =
+  | { status: "inPack"; key: string; name: string }
+  | { status: "add"; projectId: string; altId?: string | null; name: string; iconUrl?: string | null; fallback: boolean }
+  | { status: "noBuild"; tried: string[] }
+  | { status: "notYet"; name: string; kind: EntryKindT };
+export type PlanRow = { slotId: string; from: string; choice?: string | null; label: string } & SlotStatus;
+export interface ChoiceView { id: string; label: string; from: string; options: [string, string][]; chosen: string; otherOptionInPack: string[] }
+export interface RemovedRow { key: string; name: string; neededBy: string[]; otherPayloads: string[]; userAdded: boolean; suggestRemove: boolean }
+export interface PayloadPlan { payloadId: string; name: string; version: number; applied: [string, number][]; rows: PlanRow[]; choices: ChoiceView[]; removed: RemovedRow[]; notes: string[] }
+export interface PayloadUpdate { payloadId: string; name: string; appliedVersion: number; currentVersion: number }
+export interface SavedPayload { payload: Payload; notes: string[] }
+
 export const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 function toAppError(e: unknown): AppError {
@@ -161,6 +180,15 @@ export const api = {
   planRemoval: (pack: Pack, keys: string[]) => call<string[]>("plan_removal", { pack, keys }),
   entryVersions: (projectId: string, mcVersion: string, loader: Loader) => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader }),
   planPort: (pack: Pack, target: PortTarget) => call<PortPlan>("plan_port", { pack, target }),
+  listPayloads: () => call<Payload[]>("list_payloads"),
+  savePayload: (payload: Payload) => call<SavedPayload>("save_payload", { payload }),
+  deletePayload: (id: string) => call<void>("delete_payload", { id }),
+  restoreStarterPayloads: () => call<number>("restore_starter_payloads"),
+  planPayload: (pack: Pack, payloadId: string, choices?: Record<string, string>) => call<PayloadPlan>("plan_payload", { pack, payloadId, choices: choices ?? null }),
+  payloadFromEntries: (pack: Pack, keys: string[], name: string) => call<SavedPayload>("payload_from_entries", { pack, keys, name }),
+  payloadUpdates: (pack: Pack) => call<PayloadUpdate[]>("payload_updates", { pack }),
+  exportPayload: (id: string) => call<string | null>("export_payload", { id }),
+  importPayload: () => call<SavedPayload | null>("import_payload"),
   exportPlan: (pack: Pack, format: ExportFormat) => call<ExportPlan>("export_plan", { pack, format }),
   exportPack: (pack: Pack, format: ExportFormat) => call<string | null>("export_pack", { pack, format }),
   importPackFile: () => call<ImportReport | null>("import_pack_file"),

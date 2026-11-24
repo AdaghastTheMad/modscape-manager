@@ -8,6 +8,7 @@ pub mod import;
 pub mod keychain;
 pub mod loaders;
 pub mod model;
+pub mod payload;
 pub mod port;
 pub mod resolve;
 pub mod sources;
@@ -321,6 +322,108 @@ async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, l
     Ok(resolve::compatible_files(&vs, &mc_version, loader))
 }
 
+// ---------------- payloads ----------------
+fn payload_map(st: &AppState) -> AppResult<std::collections::HashMap<String, payload::Payload>> {
+    Ok(st.db.all_payloads()?.into_iter().map(|p| (p.id.clone(), p)).collect())
+}
+
+#[tauri::command]
+fn list_payloads(state: St<'_>) -> AppResult<Vec<payload::Payload>> {
+    state.db.all_payloads()
+}
+
+#[derive(serde::Serialize)]
+pub struct SavedPayload {
+    payload: payload::Payload,
+    notes: Vec<String>,
+}
+
+pub fn save_payload_impl(st: &AppState, mut p: payload::Payload) -> AppResult<SavedPayload> {
+    let prev = st.db.get_payload(&p.id)?;
+    let notes = payload::prepare_for_save(&mut p, prev.as_ref(), &store::now_iso())?;
+    // Nesting must not form a loop through other payloads.
+    let mut all = payload_map(st)?;
+    all.insert(p.id.clone(), p.clone());
+    let mut loop_notes = Vec::new();
+    payload::flatten(&p, &all, &mut loop_notes);
+    if loop_notes.iter().any(|n| n.contains("loop")) {
+        return Err(AppError::Invalid("Those nested payloads would include each other in a loop.".into()));
+    }
+    st.db.put_payload(&p)?;
+    Ok(SavedPayload { payload: p, notes })
+}
+
+#[tauri::command]
+fn save_payload(state: St<'_>, payload: payload::Payload) -> AppResult<SavedPayload> {
+    save_payload_impl(&state, payload)
+}
+
+#[tauri::command]
+fn delete_payload(state: St<'_>, id: String) -> AppResult<()> {
+    state.db.delete_payload(&id)
+}
+
+#[tauri::command]
+fn restore_starter_payloads(state: St<'_>) -> AppResult<usize> {
+    payload::seed_starters(&state.db, &store::now_iso(), true)
+}
+
+pub async fn plan_payload_impl(st: &AppState, pack: &Pack, payload_id: &str, choices: std::collections::HashMap<String, String>) -> AppResult<payload::PayloadPlan> {
+    let all = payload_map(st)?;
+    let p = all.get(payload_id).ok_or_else(|| AppError::Invalid("That payload no longer exists.".into()))?;
+    Ok(payload::plan(pack, p, &all, &choices, &st.catalog()).await)
+}
+
+#[tauri::command]
+async fn plan_payload(state: St<'_>, pack: Pack, payload_id: String, choices: Option<std::collections::HashMap<String, String>>) -> AppResult<payload::PayloadPlan> {
+    plan_payload_impl(&state, &pack, &payload_id, choices.unwrap_or_default()).await
+}
+
+#[tauri::command]
+fn payload_from_entries(state: St<'_>, pack: Pack, keys: Vec<String>, name: String) -> AppResult<SavedPayload> {
+    let p = payload::from_entries(&pack, &keys, &name, &store::now_iso())?;
+    save_payload_impl(&state, p)
+}
+
+#[tauri::command]
+fn payload_updates(state: St<'_>, pack: Pack) -> AppResult<Vec<payload::UpdateNotice>> {
+    Ok(payload::updates_for(&pack, &payload_map(&state)?))
+}
+
+#[tauri::command]
+async fn export_payload(app: tauri::AppHandle, state: St<'_>, id: String) -> AppResult<Option<String>> {
+    let p = state.db.get_payload(&id)?.ok_or_else(|| AppError::Invalid("That payload no longer exists.".into()))?;
+    let json = payload::to_file_json(&p)?;
+    let picked = app.dialog().file().set_title("Export payload").add_filter("Modpack Planner payload", &["json"]).set_file_name(format!("{}.payload.json", safe_file_name(&p.name))).blocking_save_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    std::fs::write(&path, json).map_err(|e| AppError::Storage(format!("Couldn't write the file: {e}")))?;
+    Ok(Some(path.display().to_string()))
+}
+
+pub fn import_payload_text(st: &AppState, text: &str) -> AppResult<SavedPayload> {
+    let mut p = payload::parse_file(text)?;
+    p.starter = false;
+    let mut notes = vec![];
+    if st.db.get_payload(&p.id)?.is_some() {
+        p.id = uuid::Uuid::new_v4().to_string();
+        p.name = format!("{} (imported)", p.name);
+        notes.push("A payload with the same id already exists, so this was imported as a copy.".into());
+    }
+    let mut saved = save_payload_impl(st, p)?;
+    saved.notes.splice(0..0, notes);
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn import_payload(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<SavedPayload>> {
+    let picked = app.dialog().file().set_title("Import payload").add_filter("Modpack Planner payload", &["json"]).blocking_pick_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    let text = std::fs::read_to_string(&path).map_err(|e| AppError::Storage(format!("Couldn't read the file: {e}")))?;
+    import_payload_text(&state, &text).map(Some)
+}
+
 // ---------------- duplicate to another version ----------------
 #[tauri::command]
 async fn plan_port(state: St<'_>, pack: Pack, target: port::PortTarget) -> AppResult<port::PortPlan> {
@@ -527,6 +630,7 @@ pub fn run() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(&dir.join("planner.db")).map_err(|e| e.to_string())?;
+            payload::seed_starters(&db, &store::now_iso(), false).map_err(|e| e.to_string())?;
             app.manage(AppState::new(db));
             Ok(())
         })
@@ -546,6 +650,15 @@ pub fn run() {
             icon,
             analyze_pack,
             plan_port,
+            list_payloads,
+            save_payload,
+            delete_payload,
+            restore_starter_payloads,
+            plan_payload,
+            payload_from_entries,
+            payload_updates,
+            export_payload,
+            import_payload,
             export_plan,
             export_pack,
             import_pack_file,

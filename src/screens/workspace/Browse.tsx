@@ -10,8 +10,8 @@ function hitKey(h: SearchHit) {
   return `${h.source}:${h.id}`;
 }
 
-export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending }: {
-  pack: Pack; onAdd: (h: SearchHit) => void; onSelect: (h: SearchHit) => void; selectedId?: string; pending: Set<string>;
+export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending, modeSwitch }: {
+  pack: Pack; onAdd: (h: SearchHit) => void; onSelect: (h: SearchHit) => void; selectedId?: string; pending: Set<string>; modeSwitch?: React.ReactNode;
   searchRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const [text, setText] = useState("");
@@ -76,10 +76,10 @@ export function Browse({ pack, onAdd, onSelect, selectedId, searchRef, pending }
   const hasMore = page && (page.next.modrinth != null || page.next.curseforge != null);
 
   return (
-    <Panel title="Browse" className="pane" actions={
+    <Panel title="Browse" className="pane" actions={<>{modeSwitch}
       <Select aria-label="Sites to search" value={site} onChange={(e) => setSite(e.target.value as SiteFilter)}>
         <option value="both">Both sites</option><option value="modrinth">Modrinth</option><option value="curseforge">CurseForge</option>
-      </Select>
+      </Select></>
     }>
       <div className="pane__fixed stack">
         <Input ref={searchRef} placeholder="Search mods…  ( / )" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}

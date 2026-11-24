@@ -37,7 +37,7 @@ interface Menu { key: string; x: number; y: number }
 
 export type BulkVersionAction = "pin" | "float";
 
-export function Graph({ pack, analysis, selectedKey, grouping, onGrouping, onSelect, onOpen, onRemove, onTogglePin, onTag, onPositions, onDropHit, onBulkVersions, onBulkTag }: {
+export function Graph({ pack, analysis, selectedKey, grouping, onGrouping, onSelect, onOpen, onRemove, onTogglePin, onTag, onPositions, onDropHit, onBulkVersions, onBulkTag, onDropPayload, onSaveAsPayload }: {
   pack: Pack; analysis: Analysis | null; selectedKey?: string;
   grouping: Grouping; onGrouping: (g: Grouping) => void;
   onSelect: (k: string | null) => void; onOpen: (k: string) => void; onRemove: (k: string) => void;
@@ -48,6 +48,8 @@ export function Graph({ pack, analysis, selectedKey, grouping, onGrouping, onSel
   onDropHit: (h: SearchHit, pos: { x: number; y: number }) => void;
   onBulkVersions: (keys: string[], action: BulkVersionAction) => void;
   onBulkTag: (keys: string[], tag: string) => void;
+  onDropPayload: (id: string) => void;
+  onSaveAsPayload: (keys: string[]) => void;
 }) {
   const box = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
@@ -408,13 +410,16 @@ export function Graph({ pack, analysis, selectedKey, grouping, onGrouping, onSel
             <input className="mc-input tag-input" placeholder="tag all…" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} aria-label="Tag all selected mods" />
           </form>
           <span className="grow" />
+          <Button size="small" onClick={() => onSaveAsPayload(selection)}>Save as payload…</Button>
           <Button size="small" onClick={() => { cyRef.current?.nodes().unselect(); setMulti([]); onSelect(null); }}>Clear</Button>
         </div>
       )}
       <div className="graph-canvas" ref={box} role="application"
         aria-label="Dependency graph. Click a mod to highlight its chain; Cmd/Ctrl-click or Shift-drag to select several; double-click for details; right-click for actions; drag to pin. Two-finger scroll pans, pinch zooms."
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mpp-hit")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mpp-hit") || e.dataTransfer.types.includes("application/x-mpp-payload")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
         onDrop={(e) => {
+          const payload = e.dataTransfer.getData("application/x-mpp-payload");
+          if (payload) { e.preventDefault(); onDropPayload(payload); return; }
           const raw = e.dataTransfer.getData("application/x-mpp-hit");
           const cy = cyRef.current;
           if (!raw || !cy || !box.current) return;
