@@ -13,7 +13,7 @@
 
 Modscape Manager is a desktop app for *designing* modpacks. You search Modrinth and CurseForge side by side, add mods (their required dependencies come along on their own), and the app keeps checking the whole pack as you go: missing dependencies, mods that clash, mods with no build for your version. When it's right, you export an `.mrpack`, CurseForge zip or packwiz folder and import it into Prism Launcher (or the Modrinth App, ATLauncher, the CurseForge app…).
 
-**It never downloads a mod.** Packs are lists of projects and file versions; the launcher fetches the files when it installs the pack.
+**It doesn't download mods.** Packs are lists of projects and file versions; the launcher fetches the files when it installs the pack. (The one opt-in exception is [Live Scan](#live-scan), which can fetch the jars to read their metadata.)
 
 - **No accounts, no telemetry.** The app only talks to Modrinth, CurseForge and the loaders' version lists.
 - **Your CurseForge API key** (optional) lives in your system keychain, never in a file.
@@ -22,7 +22,7 @@ Modscape Manager is a desktop app for *designing* modpacks. You search Modrinth 
 ## Contents
 
 - [Install](#install) · [Quick start](#quick-start)
-- **A tour:** [Packs](#packs) · [Workspace](#the-workspace) · [Graph](#graph-view) · [Overrides](#overrides-tab) · [Snapshots](#snapshots) · [Export](#export) · [Payloads](#payloads) · [Templates](#override-templates) · [Settings](#settings) · [Shortcuts](#keyboard-shortcuts)
+- **A tour:** [Packs](#packs) · [Workspace](#the-workspace) · [Graph](#graph-view) · [Overrides](#overrides-tab) · [Snapshots](#snapshots) · [Export](#export) · [Live Scan](#live-scan) · [Payloads](#payloads) · [Templates](#override-templates) · [Settings](#settings) · [Shortcuts](#keyboard-shortcuts)
 - [What the checks mean](#what-the-checks-mean) · [Export formats](#export-formats)
 - [Building from source](#building-from-source) · [Privacy and network](#privacy-and-network) · [License](#license)
 
@@ -137,6 +137,21 @@ Three panes: **Browse** on the left, **the pack** in the middle (as a list, a gr
 | 2 | **Pre-flight** | Ready or not, how many files, the loader, and roughly how much the launcher will download. Tick **For a hosted server** above it to leave out client-only mods (as Modrinth marks them), resource packs, shaders, dependencies only those needed, and client-only override files; the export is named "… (server)". |
 | 3 | **Problems** | Mods set to the other site (with a *Switch all* fix), distribution-blocked files, template notes. Errors block the export; warnings don't. |
 | 4 | **Included / not included** | Every file and where it goes (`mods/`, `resourcepacks/`, `shaderpacks/`, `config/paxi/datapacks/`). |
+
+### Live Scan
+
+The sites' dependency lists aren't the whole story: mods also declare requirements and incompatibilities inside their own jars. **Live Scan…** (next to *Recheck* in the checks) reads that metadata and predicts what the loader will refuse at startup, before you launch anything.
+
+<img src="docs/images/livescan.png" alt="Live Scan results with incompatibilities and a duplicate mod">
+
+| # | | |
+|:-:|---|---|
+| 1 | **Summary** | How many jars and mods were read, and where from. Choose **Download this pack's mods** (shown with the download size first; files come only from Modrinth's and CurseForge's servers, are hash-checked and cached) or **scan a Prism instance** as it is, without downloading or changing anything. |
+| 2 | **Problems** | Required mods that are missing, incompatibilities whose version range matches what's actually in the pack, mods that need another loader version, and the same mod in two jars. It reads `neoforge.mods.toml` / `mods.toml`, `fabric.mod.json` and `quilt.mod.json`, including libraries bundled inside jars. Nothing is run. |
+| 3 | **Fixes** | Remove the clashing mod, or add a missing one (when its mod id is a Modrinth project). Each fix is undoable; scan again to check. |
+
+> [!NOTE]
+> Live Scan is the only part of the app that opens mod jars, and it's opt-in. Downloaded jars stay in the app's scan cache; clear them under **Settings → Danger zone → Live Scan downloads**.
 
 ## Payloads
 

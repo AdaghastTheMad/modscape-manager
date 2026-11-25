@@ -99,7 +99,13 @@ async function launch() {
   await new Promise((r) => ws.addEventListener("open", r));
   let id = 0;
   const pending = new Map();
-  ws.addEventListener("message", (m) => { const d = JSON.parse(m.data); if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); } });
+  ws.addEventListener("message", (m) => {
+    const d = JSON.parse(m.data);
+    if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); }
+    // Surface the page's own errors (a crash would otherwise just look like missing elements).
+    if (d.method === "Runtime.exceptionThrown") console.error("page exception:", d.params.exceptionDetails?.exception?.description?.slice(0, 500));
+    if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") console.error("page error:", d.params.args.map((x) => x.value ?? x.description ?? "").join(" ").slice(0, 500));
+  });
   const send = (method, params = {}) => new Promise((res, rej) => { const i = ++id; pending.set(i, (d) => (d.error ? rej(new Error(`${method}: ${d.error.message}`)) : res(d.result))); ws.send(JSON.stringify({ id: i, method, params })); });
   const close = () => { try { ws.close(); } catch { /* */ } proc.kill(); rmSync(profile, { recursive: true, force: true }); };
   return { send, close };
@@ -258,6 +264,22 @@ const SCENES = {
     $.mark(1, $.find('.danger-zone'));`,
   shortcuts: `
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })); await $.sleep(600);`,
+  livescan: `
+    $.click('.mc-modal button', 'Close'); await $.sleep(300);
+    $.click('[role=tab]', 'Workspace'); await $.sleep(1500);
+    $.click('button', '← Packs'); await $.sleep(1200);
+    $.openPack("Tinker's Workshop"); await $.sleep(7000);
+    $.click('button', 'Live Scan'); await $.sleep(4000);
+    // The browser has no folder dialog: point "choose an instance" at the old NeoForge test jars in test-env/.
+    const real = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = (cmd, args) => cmd === 'scan_instance' ? real('dev_scan_folder', { ...args, path: 'downloads/neoforge-1.21.1' }) : real(cmd, args);
+    $.click('.mc-modal button', 'Choose an instance'); await $.sleep(12000);
+    window.__TAURI_INTERNALS__.invoke = real;
+    // Don't show this machine's folders in a public screenshot.
+    for (const d of document.querySelectorAll('.mc-modal .mc-notice div')) if (d.textContent.startsWith('Read ')) d.textContent = d.textContent.split(' from ')[0] + " from ~/Library/Application Support/PrismLauncher/instances/Tinker's Workshop/minecraft/mods (nothing was changed).";
+    $.mark(1, $.find('.mc-modal .mc-notice'));
+    $.mark(2, $.find('.mc-modal .issue-list .issue'));
+    $.mark(3, $.find('.mc-modal .issue-list .issue button.mc-btn, .mc-modal .issue-list .mc-btn'), { right: true });`,
 };
 
 // Crops for scenes that are mostly empty space.

@@ -103,7 +103,9 @@ export interface AddPlan {
 }
 
 // ---- export / import ----
-export type ResetArea = "packs" | "payloads" | "templates" | "links" | "cache" | "curseforgeKey";
+export type ResetArea = "packs" | "payloads" | "templates" | "links" | "cache" | "scanCache" | "curseforgeKey";
+export interface ScanEstimate { files: number; downloadBytes: number; cached: number; unavailable: string[] }
+export interface ScanReport { jars: number; modIds: number; issues: Issue[]; notes: string[]; skipped: string[] }
 export type ExportFormat = "mrpack" | "curseforgeZip" | "packwiz" | "markdown" | "csv";
 export interface ExportFile { key: string; name: string; source: Source; kind: EntryKindT; path: string; projectId: string; fileId: string; versionNumber: string; url: string; size: number; distributionBlocked: boolean }
 export interface Excluded { key: string; name: string; reason: string }
@@ -230,6 +232,11 @@ export const api = {
   openExternal: (url: string) => call<void>("open_external", { url }),
   /** Danger zone: put areas back to a fresh install's state. */
   resetData: (areas: ResetArea[]) => call<string[]>("reset_data", { areas }),
+  scanEstimate: (pack: Pack) => call<ScanEstimate>("scan_estimate", { pack }),
+  scanPack: (pack: Pack) => call<ScanReport>("scan_pack", { pack }),
+  scanInstance: (pack: Pack) => call<ScanReport | null>("scan_instance", { pack }),
+  scanCacheStats: () => call<[number, number]>("scan_cache_stats"),
+  clearScanCache: () => call<void>("clear_scan_cache"),
   listTemplates: () => call<Template[]>("list_templates"),
   createTemplate: (name: string) => call<Template>("create_template", { name }),
   setTemplateMeta: (id: string, name: string, description: string) => call<Template>("set_template_meta", { id, name, description }),

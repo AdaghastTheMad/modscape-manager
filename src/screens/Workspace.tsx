@@ -23,6 +23,7 @@ import type { PackView } from "./workspace/PackList";
 import { SuggestionPicker } from "./workspace/Suggestions";
 import { restore, stateOf, type PackState } from "../history";
 import { SnapshotsDialog } from "./workspace/SnapshotsDialog";
+import { LiveScanDialog } from "./workspace/LiveScan";
 
 import { IS_MAC } from "../components/Shortcuts";
 import { uiClick } from "../sound";
@@ -47,6 +48,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
   const [exporting, setExporting] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [view, setView] = useState<PackView>("list");
   // List grouping and graph regions: independent unless synced in Settings.
   const prefs = usePrefs();
@@ -599,6 +601,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           onCrossCheck={(v) => update((p) => ({ ...p, crossCheckDeps: v }))}
           overrides={<Overrides pack={pack} overview={overview} error={overviewError} onUpdate={update} onSelect={(k) => setSelection({ kind: "entry", key: k })} />}
           overrideAlerts={(overview?.updates.length ?? 0) + (overview?.missing.length ?? 0)}
+          onLiveScan={async () => { await flush(); setScanOpen(true); }}
           view={view} onView={setView} grouping={listGrouping} onGrouping={setGrouping("list")}
           graph={view === "graph" && (
             <Suspense fallback={<p className="muted">Loading graph…</p>}><Graph pack={pack} analysis={analysis} selectedKey={selection?.kind === "entry" ? selection.key : undefined}
@@ -616,6 +619,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
           onRemove={remove} onPin={pin} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })}
           onToggleLibrary={(k, v) => update((p) => ({ ...p, entries: { ...p.entries, [k]: { ...p.entries[k], libraryOverride: v } } }))} />
       </div>
+      {scanOpen && <LiveScanDialog pack={pack} onClose={() => setScanOpen(false)} onFix={applyFix} onSelect={(k) => setSelection({ kind: "entry", key: k })} />}
       {snapshotsOpen && (
         <SnapshotsDialog pack={pack} onClose={() => setSnapshotsOpen(false)}
           onSnapshots={(snaps) => update((p) => ({ ...p, snapshots: snaps }), { history: false })}

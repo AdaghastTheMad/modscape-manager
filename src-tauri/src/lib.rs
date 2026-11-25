@@ -11,6 +11,7 @@ pub mod model;
 pub mod payload;
 pub mod port;
 pub mod resolve;
+pub mod scan;
 pub mod sources;
 pub mod store;
 pub mod templates;
@@ -37,6 +38,8 @@ pub struct AppState {
     pub modrinth: Modrinth,
     pub curseforge: CurseForge,
     pub templates: templates::Library,
+    /// Live Scan's jar cache (by sha1), in the app data dir.
+    pub scan_cache: scan::Cache,
 }
 
 /// Catalog plus the hash lookups importers need.
@@ -89,7 +92,14 @@ impl AppState {
         let db = Arc::new(db);
         let fetcher = Arc::new(Fetcher::new(http, db.clone()));
         let templates = templates::Library::new(std::env::temp_dir().join(format!("modscape-manager-templates-{}", uuid::Uuid::new_v4())));
-        Self { modrinth: Modrinth::new(fetcher.clone()), curseforge: CurseForge::new(fetcher.clone()), db, fetcher, templates }
+        let scan_cache = scan::Cache { dir: std::env::temp_dir().join(format!("modscape-manager-scan-{}", uuid::Uuid::new_v4())) };
+        Self { modrinth: Modrinth::new(fetcher.clone()), curseforge: CurseForge::new(fetcher.clone()), db, fetcher, templates, scan_cache }
+    }
+
+    /// Keeps Live Scan's jars in `dir`.
+    pub fn with_scan_cache(mut self, dir: std::path::PathBuf) -> Self {
+        self.scan_cache = scan::Cache { dir };
+        self
     }
 
     /// Keeps override templates in `root` (the app data dir's `templates/`).
@@ -832,6 +842,177 @@ pub fn template_uses_impl(db: &Db) -> AppResult<std::collections::BTreeMap<Strin
     Ok(out)
 }
 
+// ---------------- Live Scan (M14) ----------------
+/// What scanning by download involves, shown before anything is fetched.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanEstimate {
+    files: usize,
+    /// Bytes still to download (cached jars excluded).
+    download_bytes: u64,
+    cached: usize,
+    /// Files that can't be fetched (distribution-blocked, no hash, not a mod CDN), by name.
+    unavailable: Vec<String>,
+}
+
+async fn scan_files(st: &AppState, pack: &Pack) -> Vec<export::ExportFile> {
+    // packwiz planning takes every entry from its own site, with url + hashes.
+    let plan = export::plan_export(pack, &st.catalog(), export::Format::Packwiz).await;
+    plan.files.into_iter().filter(|f| f.kind == model::EntryKind::Mod).collect()
+}
+
+fn fetchable(f: &export::ExportFile) -> bool {
+    f.sha1.is_some() && !f.distribution_blocked && reqwest::Url::parse(&f.url).ok().is_some_and(|u| u.scheme() == "https" && fetch::host_allowed(&u, scan::DOWNLOAD_HOSTS))
+}
+
+pub async fn scan_estimate_impl(st: &AppState, pack: &Pack) -> ScanEstimate {
+    let files = scan_files(st, pack).await;
+    let mut e = ScanEstimate { files: files.len(), download_bytes: 0, cached: 0, unavailable: vec![] };
+    for f in &files {
+        if !fetchable(f) {
+            e.unavailable.push(f.name.clone());
+        } else if st.scan_cache.has(f.sha1.as_deref().unwrap_or("")) {
+            e.cached += 1;
+        } else {
+            e.download_bytes += f.size;
+        }
+    }
+    e
+}
+
+/// Turns "requires mod id X" into an Add fix when X is a Modrinth slug.
+async fn resolve_missing(st: &AppState, report: &mut scan::ScanReport) {
+    use resolve::Catalog;
+    let ids: Vec<String> = report
+        .issues
+        .iter()
+        .filter_map(|i| match &i.fix {
+            Some(resolve::Fix::AddProject { project_id, .. }) if i.kind == "scan_missing" => Some(project_id.clone()),
+            _ => None,
+        })
+        .collect();
+    let found: std::collections::HashMap<String, resolve::ProjectInfo> = st.modrinth.projects(&ids, false).await.unwrap_or_default().into_iter().map(|p| (p.slug.clone(), p)).collect();
+    for i in report.issues.iter_mut().filter(|i| i.kind == "scan_missing") {
+        if let Some(resolve::Fix::AddProject { project_id, name, .. }) = &mut i.fix {
+            match found.get(project_id.as_str()) {
+                Some(p) => {
+                    *name = p.title.clone();
+                    *project_id = p.id.clone();
+                }
+                None => {
+                    i.message.push_str(" No Modrinth project has that id; search for it by name.");
+                    i.fix = None;
+                }
+            }
+        }
+    }
+}
+
+/// Scans the pack's own files: downloads (or reuses cached) jars, sha1-checked.
+pub async fn scan_pack_impl(st: &AppState, pack: &Pack, progress: impl Fn(usize, usize) + Send + Sync) -> AppResult<scan::ScanReport> {
+    use futures::stream::{self, StreamExt};
+    let files = scan_files(st, pack).await;
+    let total = files.len();
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let (done, progress) = (&done, &progress);
+    let results: Vec<(export::ExportFile, Result<Vec<u8>, String>)> = stream::iter(files)
+        .map(|f| async move {
+            let r = async {
+                if !fetchable(&f) {
+                    return Err(if f.distribution_blocked { "its author blocks third-party downloads" } else { "no downloadable file" }.to_string());
+                }
+                let sha = f.sha1.clone().unwrap_or_default();
+                if let Some(b) = st.scan_cache.get(&sha) {
+                    return Ok(b);
+                }
+                let resp = st.fetcher.http().get(&f.url).send().await.map_err(|e| e.to_string())?;
+                if !resp.status().is_success() {
+                    return Err(format!("download failed (HTTP {})", resp.status().as_u16()));
+                }
+                let b = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+                if scan::sha1_hex(&b) != sha {
+                    return Err("the downloaded file didn't match its hash".into());
+                }
+                st.scan_cache.put(&sha, &b).map_err(|e| e.to_string())?;
+                Ok(b)
+            }
+            .await;
+            progress(done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1, total);
+            (f, r)
+        })
+        .buffer_unordered(4)
+        .collect()
+        .await;
+    let mut jars = vec![];
+    let mut index = scan::JarIndex::new();
+    let mut skipped = vec![];
+    for (f, r) in results {
+        let file = f.path.rsplit('/').next().unwrap_or(&f.path).to_string();
+        match r {
+            Ok(b) => {
+                index.insert(file.clone(), f.key.clone());
+                jars.push((file, b));
+            }
+            Err(e) => skipped.push(format!("{}: {e}", f.name)),
+        }
+    }
+    let mut report = scan::analyse(pack, &jars, &index);
+    report.skipped = skipped;
+    resolve_missing(st, &mut report).await;
+    Ok(report)
+}
+
+/// Scans a Prism instance (or any mods folder) as it is: read-only, nothing downloaded.
+pub async fn scan_folder_impl(st: &AppState, pack: &Pack, dir: &std::path::Path) -> AppResult<scan::ScanReport> {
+    let mods = ["minecraft/mods", ".minecraft/mods", "mods", ""].iter().map(|s| dir.join(s)).find(|p| p.is_dir() && std::fs::read_dir(p).map(|r| r.flatten().any(|e| e.path().extension().is_some_and(|x| x == "jar"))).unwrap_or(false));
+    let Some(mods) = mods else { return Err(AppError::Invalid("No mods folder with jars in it there. Pick a Prism instance folder (or its mods folder).".into())) };
+    let jars = scan::read_folder(&mods)?;
+    // Match jars to the pack's entries by hash, so fixes point at the right mod.
+    let by_sha: std::collections::HashMap<String, String> = scan_files(st, pack).await.into_iter().filter_map(|f| f.sha1.map(|s| (s, f.key))).collect();
+    let index: scan::JarIndex = jars.iter().filter_map(|(n, b)| by_sha.get(&scan::sha1_hex(b)).map(|k| (n.clone(), k.clone()))).collect();
+    let mut report = scan::analyse(pack, &jars, &index);
+    // Show paths under your home folder as ~/… (shorter, and nothing personal in screenshots).
+    let shown = std::env::var_os("HOME").and_then(|h| mods.strip_prefix(h).ok().map(|r| format!("~/{}", r.display()))).unwrap_or_else(|| mods.display().to_string());
+    report.notes.push(format!("Read {} jars from {shown} (nothing was changed).", jars.len()));
+    let unmatched = jars.len() - index.len();
+    if unmatched > 0 {
+        report.notes.push(format!("{unmatched} jar(s) there aren't this pack's exact files (other versions, or mods not in the pack), so their problems can't offer fixes."));
+    }
+    resolve_missing(st, &mut report).await;
+    Ok(report)
+}
+
+#[tauri::command]
+async fn scan_estimate(state: St<'_>, pack: Pack) -> AppResult<ScanEstimate> {
+    Ok(scan_estimate_impl(&state, &pack).await)
+}
+
+#[tauri::command]
+async fn scan_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack) -> AppResult<scan::ScanReport> {
+    use tauri::Emitter;
+    scan_pack_impl(&state, &pack, |done, total| {
+        let _ = app.emit("scan-progress", serde_json::json!({ "done": done, "total": total }));
+    })
+    .await
+}
+
+#[tauri::command]
+async fn scan_instance(app: tauri::AppHandle, state: St<'_>, pack: Pack) -> AppResult<Option<scan::ScanReport>> {
+    let Some(fp) = app.dialog().file().set_title("Choose a Prism instance (or mods folder) to scan").blocking_pick_folder() else { return Ok(None) };
+    let dir = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
+    scan_folder_impl(&state, &pack, &dir).await.map(Some)
+}
+
+#[tauri::command]
+fn scan_cache_stats(state: St<'_>) -> (usize, u64) {
+    state.scan_cache.stats()
+}
+
+#[tauri::command]
+fn clear_scan_cache(state: St<'_>) -> AppResult<()> {
+    state.scan_cache.clear()
+}
+
 // ---------------- danger zone ----------------
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -841,6 +1022,7 @@ pub enum ResetArea {
     Templates,
     Links,
     Cache,
+    ScanCache,
     CurseforgeKey,
 }
 
@@ -865,6 +1047,10 @@ pub fn reset_impl(st: &AppState, areas: &[ResetArea]) -> AppResult<Vec<String>> 
             ResetArea::Cache => {
                 st.db.cache_clear()?;
                 out.push("Cleared the cache.".into());
+            }
+            ResetArea::ScanCache => {
+                st.scan_cache.clear()?;
+                out.push("Deleted Live Scan's downloaded jars.".into());
             }
             ResetArea::CurseforgeKey => {
                 st.curseforge.forget_key();
@@ -917,7 +1103,7 @@ pub fn run() {
             let db = Db::open(&dir.join("planner.db")).map_err(|e| e.to_string())?;
             payload::seed_starters(&db, &store::now_iso(), false).map_err(|e| e.to_string())?;
             payload::sync_starters(&db, &store::now_iso()).map_err(|e| e.to_string())?;
-            app.manage(AppState::new(db).with_templates(dir.join("templates")));
+            app.manage(AppState::new(db).with_templates(dir.join("templates")).with_scan_cache(dir.join("scan-cache")));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -966,6 +1152,11 @@ pub fn run() {
             clear_cache,
             open_external,
             reset_data,
+            scan_estimate,
+            scan_pack,
+            scan_instance,
+            scan_cache_stats,
+            clear_scan_cache,
             list_templates,
             create_template,
             set_template_meta,

@@ -26,7 +26,8 @@ function worst(issues: Issue[]): Severity | null {
   return issues.length ? "info" : null;
 }
 
-function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggestions, onSuggest, onDismiss, adding }: {
+function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggestions, onSuggest, onDismiss, adding, onLiveScan }: {
+  onLiveScan: () => void;
   pack: Pack; analysis: Analysis | null; analyzing: boolean; onFix: (f: Fix) => void; onSelect: (k: string) => void; onRecheck: () => void;
   suggestions: Suggestion[]; onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; adding: boolean;
 }) {
@@ -53,6 +54,7 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
           {analysis && !analysis.complete && <span className="muted"> · some mods couldn't be checked</span>}
         </button>
         <span className="grow" />
+        <Button size="small" onClick={onLiveScan} title="Read the mods' own jar metadata for problems the sites don't list (opt-in; downloads the jars or reads a Prism instance)">Live Scan…</Button>
         <Button size="small" onClick={onRecheck} disabled={analyzing} title="Re-fetch everything, bypassing the cache">Recheck</Button>
       </div>
       {expanded && issues.length > 0 && (
@@ -83,14 +85,14 @@ function Checks({ pack, analysis, analyzing, onFix, onSelect, onRecheck, suggest
 
 export type PackView = "list" | "graph" | "overrides";
 
-export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onDropHit, onSaveAsPayload, updates, overrides, overrideAlerts }: {
+export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onRemove, undo, notice, onFix, onRecheck, onSuggest, onDismiss, onMatchAll, matching, adding, onCrossCheck, view, onView, graph, grouping, onGrouping, onDropPayload, onDropHit, onSaveAsPayload, updates, overrides, overrideAlerts, onLiveScan }: {
   pack: Pack; analysis: Analysis | null; analyzing: boolean; selectedKey?: string; onSelect: (k: string) => void; onRemove: (k: string) => void;
   undo: { label: string; run: () => void } | null; notice: React.ReactNode; onFix: (f: Fix) => void; onRecheck: () => void;
   onSuggest: (ids: string[]) => void; onDismiss: (s: Suggestion) => void; onMatchAll: () => void; matching: boolean; adding: boolean;
   onCrossCheck: (v: boolean) => void;
   view: PackView; onView: (v: PackView) => void; graph: React.ReactNode;
   grouping: Grouping; onGrouping: (g: Grouping) => void;
-  onDropPayload: (id: string) => void; onDropHit: (h: SearchHit) => void; onSaveAsPayload: () => void; updates: React.ReactNode; overrides: React.ReactNode; overrideAlerts: number;
+  onDropPayload: (id: string) => void; onDropHit: (h: SearchHit) => void; onSaveAsPayload: () => void; updates: React.ReactNode; overrides: React.ReactNode; overrideAlerts: number; onLiveScan: () => void;
 }) {
   const by = grouping;
   const issuesByEntry = useMemo(() => {
@@ -128,7 +130,7 @@ export function PackList({ pack, analysis, analyzing, selectedKey, onSelect, onR
     }>
       <div className="pane__fixed stack">
         <Checks pack={pack} analysis={analysis} analyzing={analyzing} onFix={onFix} onSelect={onSelect} onRecheck={onRecheck}
-          suggestions={analysis?.suggestions ?? []} onSuggest={onSuggest} onDismiss={onDismiss} adding={adding} />
+          suggestions={analysis?.suggestions ?? []} onSuggest={onSuggest} onDismiss={onDismiss} adding={adding} onLiveScan={onLiveScan} />
         {updates}
         {notice}
         {undo && <Notice title={undo.label}><Button size="small" onClick={undo.run}>Undo</Button></Notice>}

@@ -190,6 +190,7 @@ const AREAS: { id: ResetArea | "prefs"; label: string; what: string }[] = [
   { id: "templates", label: "Override templates", what: "every template and its files, the trash folder included" },
   { id: "links", label: "Remembered site links", what: "the Modrinth ↔ CurseForge links you confirmed" },
   { id: "cache", label: "Cache", what: "saved API answers and icons (they're fetched again as needed)" },
+  { id: "scanCache", label: "Live Scan downloads", what: "the mod jars Live Scan downloaded (fetched again on the next scan)" },
   { id: "curseforgeKey", label: "CurseForge key", what: "the key in your system keychain (you can add it again)" },
   { id: "prefs", label: "Interface settings", what: "the toggles on this page, back to their defaults" },
 ];

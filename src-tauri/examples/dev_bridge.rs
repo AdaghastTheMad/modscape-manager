@@ -123,6 +123,12 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             Ok(serde_json::to_value(resolve::compatible_files_kind(&vs, &mc, loader, kind)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
+        "scan_estimate" => Ok(serde_json::to_value(modscape_manager_lib::scan_estimate_impl(st, &arg(a, "pack")?).await).unwrap()),
+        "scan_pack" => to_val(modscape_manager_lib::scan_pack_impl(st, &arg(a, "pack")?, |_, _| {}).await),
+        "dev_scan_folder" => to_val(modscape_manager_lib::scan_folder_impl(st, &arg(a, "pack")?, &test_env_path(&arg::<String>(a, "path")?)?).await),
+        "scan_cache_stats" => Ok(serde_json::to_value(st.scan_cache.stats()).unwrap()),
+        "clear_scan_cache" => to_val(st.scan_cache.clear()),
+        "scan_instance" => Ok(Value::Null),
         "all_versions" => to_val(modscape_manager_lib::all_versions_impl(st, &arg::<String>(a, "projectId")?).await),
         // Never the keychain from a dev tool: the key area is skipped here.
         "reset_data" => {
@@ -175,7 +181,8 @@ fn test_env_path(rel: &str) -> Result<std::path::PathBuf, Value> {
 }
 
 fn main() {
-    let st = AppState::new(store::Db::memory()).with_templates(test_env_path("bridge-templates/x").unwrap().parent().unwrap().to_path_buf());
+    let st = AppState::new(store::Db::memory()).with_templates(test_env_path("bridge-templates/x").unwrap().parent().unwrap().to_path_buf())
+        .with_scan_cache(test_env_path("bridge-scan-cache/x").unwrap().parent().unwrap().to_path_buf());
     modscape_manager_lib::payload::seed_starters(&st.db, &store::now_iso(), false).unwrap();
     // Never touch the OS keychain from a dev tool: CurseForge stays off here.
     st.curseforge.disable_keychain();
