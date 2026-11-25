@@ -130,6 +130,34 @@ pub fn in_fabric_range(version: Option<&str>, preds: &[String]) -> bool {
     })
 }
 
+/// A Maven range in words: "[1.21,1.21.1)" → "1.21 up to, but not including, 1.21.1".
+pub fn describe_maven(range: &str) -> String {
+    let r = range.trim();
+    if r.is_empty() || r == "*" {
+        return "any version".into();
+    }
+    if !r.starts_with(['[', '(']) {
+        return format!("{r} or newer");
+    }
+    if r.matches(['[', '(']).count() > 1 {
+        return r.to_string(); // unions: leave as written
+    }
+    let (lo_inc, hi_inc) = (r.starts_with('['), r.ends_with(']'));
+    let body = &r[1..r.len() - 1];
+    match body.split_once(',') {
+        None => format!("exactly {}", body.trim()),
+        Some((lo, hi)) => {
+            let (lo, hi) = (lo.trim(), hi.trim());
+            match (lo.is_empty(), hi.is_empty()) {
+                (true, true) => "any version".into(),
+                (false, true) => if lo_inc { format!("{lo} or newer") } else { format!("newer than {lo}") },
+                (true, false) => if hi_inc { format!("{hi} or older") } else { format!("anything older than {hi}") },
+                (false, false) => format!("{lo}{} up to{} {hi}", if lo_inc { "" } else { " (exclusive)" }, if hi_inc { " and including" } else { ", but not including," }),
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------- reading jars
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Meta {
@@ -358,6 +386,11 @@ pub fn analyse(pack: &Pack, jars: &[(String, Vec<u8>)], index: &JarIndex) -> Sca
             Meta::Forge => d.maven.clone(),
             Meta::Fabric => d.fabric.join(" || "),
         };
+        // Said in words where we can (mods.toml ranges are easy to misread: ")" excludes the end).
+        let range_words = match d.meta {
+            Meta::Forge => format!("{} ({})", describe_maven(&d.maven), d.maven),
+            Meta::Fabric => range_text.clone(),
+        };
         let id = format!("{:?}:{}:{}:{}", d.kind, d.jar, d.id, range_text);
         if !seen.insert(id.clone()) {
             continue;
@@ -375,9 +408,12 @@ pub fn analyse(pack: &Pack, jars: &[(String, Vec<u8>)], index: &JarIndex) -> Sca
                     entry_key: entry_of(&d.jar),
                     other_key: None,
                     message: if strict {
-                        format!("{owner_name} says it needs Minecraft {range_text}; the pack is {}. The loader won't start it.", pack.mc_version)
+                        format!("{owner_name} says it needs Minecraft {range_words}; the pack is {}. The loader won't start it.", pack.mc_version)
                     } else {
-                        format!("{owner_name}'s metadata lists Minecraft {range_text}, which doesn't include {}. NeoForge usually loads it anyway; if the game refuses, this is why.", pack.mc_version)
+                        format!(
+                            "{owner_name}'s jar says it's for Minecraft {range_words}, so {} is just outside it on paper. Mod authors often write the range this way by accident, and NeoForge usually loads it anyway; if the game refuses to start, this is why.",
+                            pack.mc_version
+                        )
                     },
                     fix: if strict { entry_of(&d.jar).map(|key| Fix::Remove { key }) } else { None },
                 });
@@ -392,7 +428,7 @@ pub fn analyse(pack: &Pack, jars: &[(String, Vec<u8>)], index: &JarIndex) -> Sca
                     kind: "scan_loader",
                     entry_key: entry_of(&d.jar),
                     other_key: None,
-                    message: format!("{owner_name} needs {} {range_text}; the pack's loader version is {loader_version}. Pick a newer loader version when you create or duplicate the pack.", d.id),
+                    message: format!("{owner_name} needs {} {range_words}; the pack's loader version is {loader_version}. Pick a newer loader version when you create or duplicate the pack.", d.id),
                     fix: None,
                 });
             }
@@ -420,7 +456,7 @@ pub fn analyse(pack: &Pack, jars: &[(String, Vec<u8>)], index: &JarIndex) -> Sca
                     kind: "scan_version",
                     entry_key: entry_of(&d.jar),
                     other_key: entry_of(jar),
-                    message: format!("{owner_name} needs {} {range_text}, but the pack has {} ({}).", d.id, v.as_deref().unwrap_or("an unknown version"), name_of(jar)),
+                    message: format!("{owner_name} needs {} {range_words}, but the pack has {} ({}).", d.id, v.as_deref().unwrap_or("an unknown version"), name_of(jar)),
                     fix: None,
                 }),
                 _ => {}
@@ -558,6 +594,9 @@ mod tests {
         assert!(in_fabric_range(Some("5.0"), &["<4".into(), ">=5".into()]), "list is OR");
         assert!(in_fabric_range(Some("26.1.2"), &["~26.1-".into()]), "pre-release marker");
         assert!(in_maven_range(Some("1.0.82+mc1.21.1"), "[1.0.82,)"), "build metadata ignored");
+        assert_eq!(describe_maven("[1.21,1.21.1)"), "1.21 up to, but not including, 1.21.1");
+        assert_eq!(describe_maven("[21.1.90,)"), "21.1.90 or newer");
+        assert_eq!(describe_maven("[1.0,2.0]"), "1.0 up to and including 2.0");
     }
 
     #[test]

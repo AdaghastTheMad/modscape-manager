@@ -925,11 +925,28 @@ pub async fn scan_pack_impl(st: &AppState, pack: &Pack, progress: impl Fn(usize,
                 if let Some(b) = st.scan_cache.get(&sha) {
                     return Ok(b);
                 }
-                let resp = st.fetcher.http().get(&f.url).send().await.map_err(|e| e.to_string())?;
-                if !resp.status().is_success() {
-                    return Err(format!("download failed (HTTP {})", resp.status().as_u16()));
+                // Jars can be big (sound and texture mods run to tens of MB), so downloads get their own
+                // time limit instead of the client's 20 s meant for API calls, and one retry.
+                let mut last = String::new();
+                let mut got = None;
+                for _ in 0..2 {
+                    let r = async {
+                        let resp = st.fetcher.http().get(&f.url).timeout(std::time::Duration::from_secs(600)).send().await.map_err(|e| e.to_string())?;
+                        if !resp.status().is_success() {
+                            return Err(format!("download failed (HTTP {})", resp.status().as_u16()));
+                        }
+                        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("download interrupted: {e}"))
+                    }
+                    .await;
+                    match r {
+                        Ok(b) => {
+                            got = Some(b);
+                            break;
+                        }
+                        Err(e) => last = e,
+                    }
                 }
-                let b = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+                let Some(b) = got else { return Err(last) };
                 if scan::sha1_hex(&b) != sha {
                     return Err("the downloaded file didn't match its hash".into());
                 }

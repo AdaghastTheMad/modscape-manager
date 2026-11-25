@@ -946,12 +946,13 @@
         {
           "kind": "mod",
           "id": "s061",
-          "label": "",
+          "label": "The Sound of Rain (CurseForge has the NeoForge 1.21.1 build)",
           "candidates": [
             {
               "name": "The Sound of Rain",
               "modrinthId": "8GRDQ9XB",
-              "iconUrl": "https://cdn.modrinth.com/data/8GRDQ9XB/8da9fe7ea83e2ec62f5705f5f51b9ef82e8c2770_96.webp"
+              "iconUrl": "https://cdn.modrinth.com/data/8GRDQ9XB/8da9fe7ea83e2ec62f5705f5f51b9ef82e8c2770_96.webp",
+              "curseforgeId": 1302230
             }
           ]
         },
