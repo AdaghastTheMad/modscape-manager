@@ -36,7 +36,8 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let pack: model::Pack = arg(a, "pack")?;
             let key: String = arg(a, "key")?;
             let e = pack.entries.get(&key).ok_or(json!({"code": "invalid", "message": "no such entry"}))?;
-            to_val(modpack_planner_lib::sources::matching::find_counterparts(&st.modrinth, &st.curseforge, e, &pack.mc_version, pack.loader).await)
+            let manual = st.db.manual_links().unwrap_or_default();
+            to_val(modpack_planner_lib::sources::matching::find_counterparts_with(&st.modrinth, &st.curseforge, e, &pack.mc_version, pack.loader, &manual).await)
         }
         "project_details" => match arg::<modpack_planner_lib::sources::Source>(a, "source")? {
             modpack_planner_lib::sources::Source::Modrinth => to_val(st.modrinth.project(&arg::<String>(a, "id")?, force).await),
@@ -117,6 +118,8 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             Ok(serde_json::to_value(resolve::compatible_files_kind(&vs, &mc, loader, kind)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
+        "remember_link" => to_val(st.db.remember_link(&arg::<String>(a, "modrinthId")?, arg(a, "curseforgeId")?)),
+        "forget_link" => to_val(st.db.forget_link(&arg::<String>(a, "modrinthId")?, arg(a, "curseforgeId")?)),
         // Override templates (library lives in test-env/bridge-templates; source paths are relative to test-env/).
         "list_templates" => to_val(st.templates.list(&store::now_iso())),
         "create_template" => to_val(st.templates.create(&arg::<String>(a, "name")?, "", &store::now_iso())),

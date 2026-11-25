@@ -215,6 +215,23 @@ impl Db {
         self.with(|c| c.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional())
     }
 
+    /// Cross-site links you confirmed yourself: (Modrinth id, CurseForge id).
+    pub fn manual_links(&self) -> AppResult<Vec<(String, u64)>> {
+        Ok(self.meta_get("manual_links")?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default())
+    }
+    /// Remembers a link; a project has at most one partner, so older pairs with either id go.
+    pub fn remember_link(&self, modrinth_id: &str, curseforge_id: u64) -> AppResult<()> {
+        let mut l = self.manual_links()?;
+        l.retain(|(m, c)| m != modrinth_id && *c != curseforge_id);
+        l.push((modrinth_id.to_string(), curseforge_id));
+        self.meta_set("manual_links", &serde_json::to_string(&l).unwrap())
+    }
+    pub fn forget_link(&self, modrinth_id: &str, curseforge_id: u64) -> AppResult<()> {
+        let mut l = self.manual_links()?;
+        l.retain(|(m, c)| !(m == modrinth_id && *c == curseforge_id));
+        self.meta_set("manual_links", &serde_json::to_string(&l).unwrap())
+    }
+
     pub fn meta_set(&self, key: &str, value: &str) -> AppResult<()> {
         self.with(|c| c.execute("INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=?2", params![key, value]).map(|_| ()))
     }
@@ -279,6 +296,17 @@ mod tests {
         assert_eq!(db.list_packs().unwrap()[0].name, "Renamed");
         db.delete_pack("p1").unwrap();
         assert!(db.get_pack("p1").unwrap().is_none());
+    }
+
+    #[test]
+    fn manual_links_replace_older_pairs() {
+        let db = Db::memory();
+        db.remember_link("mrA", 1).unwrap();
+        db.remember_link("mrB", 2).unwrap();
+        db.remember_link("mrA", 3).unwrap(); // re-linked: the old pair goes
+        assert_eq!(db.manual_links().unwrap(), vec![("mrB".to_string(), 2), ("mrA".to_string(), 3)]);
+        db.forget_link("mrB", 2).unwrap();
+        assert_eq!(db.manual_links().unwrap(), vec![("mrA".to_string(), 3)]);
     }
 
     #[test]

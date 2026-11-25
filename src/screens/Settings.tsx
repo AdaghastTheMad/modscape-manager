@@ -148,6 +148,10 @@ function InterfaceSection() {
         <input type="checkbox" checked={prefs.clickSound} onChange={(e) => { setPref("clickSound", e.target.checked); if (e.target.checked) playClick(); }} />
         Click sound on buttons
       </label>
+      <label className="mc-check" style={{ marginTop: 6, marginLeft: 24, opacity: prefs.clickSound ? 1 : 0.6 }}>
+        <input type="checkbox" disabled={!prefs.clickSound} checked={prefs.clickSoundLists} onChange={(e) => setPref("clickSoundLists", e.target.checked)} />
+        Also when picking items in lists (mods, payloads, templates)
+      </label>
       <label className="mc-check" style={{ marginTop: 6 }}>
         <input type="checkbox" checked={prefs.backdrop} onChange={(e) => setPref("backdrop", e.target.checked)} />
         Dark tiled backdrop behind the panels

@@ -1,4 +1,5 @@
 // Minecraft-dark component kit: Button, Panel, Slot, Tooltip, Input, Tabs (+ Badge, Notice, Modal, ModIcon).
+import { uiClick } from "../sound";
 import type { AppError } from "../api";
 import { useIcon } from "../hooks";
 import { useId, useRef, useState, type ButtonHTMLAttributes, type ComponentProps, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from "react";
@@ -97,7 +98,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label, underline
     if (e.key === "ArrowLeft") next = enabled[(pos - 1 + enabled.length) % enabled.length];
     if (e.key === "Home") next = enabled[0];
     if (e.key === "End") next = enabled[enabled.length - 1];
-    if (next !== undefined) { e.preventDefault(); refs.current[next]?.focus(); onChange(tabs[next].id); }
+    if (next !== undefined) { e.preventDefault(); if (tabs[next].id !== value) uiClick(); refs.current[next]?.focus(); onChange(tabs[next].id); }
   };
   return (
     <div role="tablist" aria-label={label} className={cx("mc-tabs", underline && "mc-tabs--under")}>

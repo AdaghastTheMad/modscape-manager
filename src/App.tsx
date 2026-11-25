@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ShortcutsHelp } from "./components/Shortcuts";
 import { typingIn } from "./hooks";
 import { usePrefs } from "./prefs";
-import { playClick } from "./sound";
+import { uiClick } from "./sound";
 import { Tabs } from "./components/kit";
 import { Kit } from "./screens/Kit";
 import { Packs } from "./screens/Packs";
@@ -20,22 +20,31 @@ export default function App() {
   const { guard, prompt } = useUnsavedGuard();
   const [help, setHelp] = useState(false);
   const prefs = usePrefs();
+  // Clicks: "click" also fires for Enter/Space on a focused button, so keyboard and mouse sound alike.
   useEffect(() => {
     if (!prefs.clickSound) return;
-    const onDown = (e: PointerEvent) => {
-      const b = (e.target as HTMLElement | null)?.closest("button, [role=tab]");
-      if (b && !(b as HTMLButtonElement).disabled) playClick();
+    const LIST = ".entry, .hit, .tpl-file";
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      const b = t?.closest("button, [role=tab]") as HTMLButtonElement | null;
+      if (b) { if (!b.disabled) uiClick("button"); return; }
+      if (t?.closest(LIST)) uiClick("list");
     };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    // List items are picked from the keyboard with Enter/Space (they aren't buttons).
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === "Enter" || e.key === " ") && (e.target as HTMLElement | null)?.matches?.(LIST)) uiClick("list");
+    };
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => { document.removeEventListener("click", onClick, true); document.removeEventListener("keydown", onKey, true); };
   }, [prefs.clickSound]);
   const go = (s: Screen) => { if (s !== screen) guard(() => setScreen(s)); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typingIn(e) || document.querySelector(".mc-modal-backdrop")) return;
-      if (e.key === "?") { e.preventDefault(); setHelp(true); return; }
+      if (e.key === "?") { e.preventDefault(); uiClick(); setHelp(true); return; }
       const order: Screen[] = ["packs", "payloads", "templates", "settings"];
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); go(order[Number(e.key) - 1]); }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); if (order[Number(e.key) - 1] !== screen) uiClick(); go(order[Number(e.key) - 1]); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

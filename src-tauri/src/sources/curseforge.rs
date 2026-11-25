@@ -19,8 +19,8 @@ const NAME: &str = "CurseForge";
 pub const MINECRAFT_GAME_ID: u32 = 432;
 pub const CLASS_MODS: u32 = 6;
 /// CurseForge class ids for the other content types (Minecraft game 432).
-/// Not checked against the live API from here (it needs the owner's key):
-/// confirm by searching each content type with CurseForge on.
+/// Same numbers as Prism Launcher's `g_classIDMappings` (FlameAPI.cpp); the
+/// owner's searches of each type with CurseForge on matched too.
 pub const CLASS_RESOURCE_PACKS: u32 = 12;
 pub const CLASS_SHADERS: u32 = 6552;
 pub const CLASS_DATAPACKS: u32 = 6945;

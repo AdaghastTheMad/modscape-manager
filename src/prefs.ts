@@ -5,20 +5,25 @@ const KEY = "modpack-planner.prefs";
 export interface Prefs {
   /** Keep the list's grouping and the graph's regions the same. Off by default. */
   syncGrouping: boolean;
-  /** Click sound on buttons. Off by default. */
+  /** Click sound on buttons (and the shortcuts that do the same). Off by default. */
   clickSound: boolean;
+  /** Also click when picking an item in a list (mods, payloads, templates…). Off by default. */
+  clickSoundLists: boolean;
   /** Dark tiled backdrop behind the panels. */
   backdrop: boolean;
   /** Developer: show the Component kit tab. Off by default. */
   showKit: boolean;
 }
-const DEFAULTS: Prefs = { syncGrouping: false, clickSound: false, backdrop: true, showKit: false };
+const DEFAULTS: Prefs = { syncGrouping: false, clickSound: false, clickSoundLists: false, backdrop: true, showKit: false };
 
 function read(): Prefs {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return DEFAULTS; }
 }
 
 const listeners = new Set<(p: Prefs) => void>();
+
+/** Current prefs outside React (e.g. in event handlers). */
+export const getPrefs = read;
 
 export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]) {
   const next = { ...read(), [k]: v };

@@ -392,6 +392,9 @@ pub enum Fix {
     /// Switch an entry that's linked on both sites to the other one.
     #[serde(rename_all = "camelCase")]
     UseSource { key: String, source: Source },
+    /// Use the same project as another kind (a datapack that's also a mod).
+    #[serde(rename_all = "camelCase")]
+    SetKind { key: String, to: EntryKind },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -571,6 +574,32 @@ fn kind_checks(pack: &Pack, issues: &mut Vec<Issue>) {
                     "Without Paxi, datapacks like {name} are exported to a datapacks/ folder and have to be added to each world by hand. Paxi loads them in every world."
                 ),
                 fix: Some(Fix::AddProject { project_id: PAXI.into(), name: "Paxi".into(), pin_version: None, for_key: None }),
+            });
+        }
+    }
+}
+
+/// Many datapacks (Terralith, Dungeons and Taverns…) also ship as mods. For
+/// the pack's loader the mod is usually the better pick: no Paxi needed, and
+/// it loads like everything else.
+async fn datapack_mod_checks(pack: &Pack, cat: &dyn Catalog, force: bool, issues: &mut Vec<Issue>) {
+    for (key, e) in pack.entries.iter().filter(|(_, e)| e.kind == EntryKind::Datapack) {
+        let Some((pid, _)) = target(e) else { continue };
+        let vs = cat.versions_of(&pid, &pack.mc_version, pack.loader, EntryKind::Mod, force).await.unwrap_or_default();
+        if select_version(&vs, &pack.mc_version, pack.loader, pack.channel_policy).is_some() {
+            issues.push(Issue {
+                id: format!("datapack_has_mod:{key}"),
+                severity: Severity::Warning,
+                kind: "datapack_has_mod",
+                entry_key: Some(key.clone()),
+                other_key: None,
+                message: format!(
+                    "{} also comes as a {} mod for Minecraft {}. The mod is usually the better pick: it loads like any other mod, without Paxi.",
+                    e.display.name,
+                    loader_name(pack.loader),
+                    pack.mc_version
+                ),
+                fix: Some(Fix::SetKind { key: key.clone(), to: EntryKind::Mod }),
             });
         }
     }
@@ -978,6 +1007,7 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
     }
 
     kind_checks(pack, &mut issues);
+    datapack_mod_checks(pack, cat, force, &mut issues).await;
     issues.sort_by(|a, b| a.severity.cmp(&b.severity).then(a.message.cmp(&b.message)));
     Analysis { entries, issues, suggestions: suggestions.into_values().collect(), complete }
 }
@@ -1570,6 +1600,12 @@ pub(crate) mod tests {
         assert!(!k.contains(&"no_build"), "{k:?}");
         let fix = a.issues.iter().find(|i| i.kind == "shader_loader_missing").unwrap().fix.clone();
         assert!(matches!(fix, Some(Fix::AddProject { ref project_id, .. }) if project_id == IRIS));
+        // Terralith-style datapack that also has a mod build: warn, offer to switch.
+        let plan = block(plan_add_kind(&pack, "dpTerra", EntryKind::Datapack, None, None, None, &c, false, "t", &mut keys)).unwrap();
+        apply(&mut pack, plan);
+        let a = block(analyze(&pack, &c, false, 0));
+        let i = a.issues.iter().find(|i| i.kind == "datapack_has_mod").expect("datapack_has_mod");
+        assert!(matches!(i.fix, Some(Fix::SetKind { to: EntryKind::Mod, .. })));
         // With Iris added the shader check is satisfied.
         let plan = block(plan_add(&pack, IRIS, None, None, None, &c, false, "t", &mut keys)).unwrap();
         apply(&mut pack, plan);

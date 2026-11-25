@@ -1,6 +1,15 @@
 // The optional button click (Settings → Interface; off by default). Made in
 // code with Web Audio, so there's no sound file and nothing borrowed from the game.
+import { getPrefs } from "./prefs";
+
 let ctx: AudioContext | null = null;
+
+/** Click if the setting is on: "button" for buttons, tabs and their shortcuts,
+ *  "list" for picking an item in a list (its own setting). */
+export function uiClick(what: "button" | "list" = "button") {
+  const p = getPrefs();
+  if (p.clickSound && (what === "button" || p.clickSoundLists)) playClick();
+}
 
 export function playClick() {
   try {

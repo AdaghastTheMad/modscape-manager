@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Analysis, type AppError, type Candidate, type DepLink, type FileInfo, type Fix, type ProjectDetails, type SearchHit, type Source } from "../../api";
 import { Button, ErrorNotice, ModIcon, Notice, Panel, SourceBadge } from "../../components/kit";
 import { Markdown } from "../../components/Markdown";
-import { fmtCompact, fmtDate } from "../../hooks";
+import { fmtCompact, fmtDate, useDebounced } from "../../hooks";
 import { entryCatalogId, entryName, findHit, isLibrary, loaderLabel, prettyCategory, type Pack } from "../../model";
 import { fixLabel } from "./PackList";
 
@@ -33,6 +33,46 @@ function DepList({ title, deps, pack, onSelect, onAdd, addLabel }: {
 
 const siteName = (s: Source) => (s === "modrinth" ? "Modrinth" : "CurseForge");
 
+/** Search one site yourself, for when matching misses an obvious copy. */
+function ManualLink({ pack, entryKey, site, onPick, onClose }: { pack: Pack; entryKey: string; site: Source; onPick: (c: Candidate) => void; onClose: () => void }) {
+  const e = pack.entries[entryKey];
+  const [text, setText] = useState(e.display.name.replace(/\[[^\]]*\]/g, "").split(" - ")[0].trim());
+  const q = useDebounced(text, 300);
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
+  useEffect(() => {
+    if (!q.trim()) { setHits([]); return; }
+    let live = true;
+    setError(null);
+    api.searchAll({ text: q, includeIncompatible: true, limit: 8, kind: e.kind }, [site], site)
+      .then((r) => live && setHits(r.hits.filter((h) => h.source === site)), (err) => live && setError(err));
+    return () => { live = false; };
+  }, [q, site]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <div className="row" style={{ gap: 4 }}>
+        <input className="mc-input grow" autoFocus value={text} onChange={(ev) => setText(ev.target.value)} aria-label={`Search ${siteName(site)}`} placeholder={`Search ${siteName(site)}…`}
+          onKeyDown={(ev) => { if (ev.key === "Escape") { ev.stopPropagation(); onClose(); } }} />
+        <Button size="small" onClick={onClose}>Cancel</Button>
+      </div>
+      {error && <ErrorNotice error={error} />}
+      {hits?.length === 0 && q.trim() && <span className="muted" style={{ fontSize: 13 }}>Nothing found on {siteName(site)}.</span>}
+      {hits && hits.length > 0 && (
+        <ul className="match-list">
+          {hits.map((h) => (
+            <li key={h.id}>
+              <ModIcon url={h.iconUrl} label={h.name} size={28} />
+              <span className="grow">{h.name} <span className="muted">· {h.slug} · {fmtCompact.format(h.downloads)}</span></span>
+              <Button size="small" variant="primary" title="Link it; the app remembers this for every pack"
+                onClick={() => onPick({ source: site, id: h.id, slug: h.slug, name: h.name, iconUrl: h.iconUrl, downloads: h.downloads, confidence: "manual", reason: "Linked by you" })}>Link</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function Sites({ pack, entryKey, onUseSource, onLink, onUnlink }: {
   pack: Pack; entryKey: string; onUseSource: (k: string, s: Source) => void; onLink: (k: string, c: Candidate) => void; onUnlink: (k: string, s: Source) => void;
 }) {
@@ -40,7 +80,8 @@ function Sites({ pack, entryKey, onUseSource, onLink, onUnlink }: {
   const [cands, setCands] = useState<Candidate[] | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setCands(null); setError(null); }, [entryKey]);
+  const [manual, setManual] = useState(false);
+  useEffect(() => { setCands(null); setError(null); setManual(false); }, [entryKey]);
   const both = !!e.ref.modrinthId && e.ref.curseforgeId != null;
   const missing: Source = e.ref.modrinthId ? "curseforge" : "modrinth";
   const find = async () => {
@@ -64,9 +105,13 @@ function Sites({ pack, entryKey, onUseSource, onLink, onUnlink }: {
       })}
       {!both && (
         <>
-          <div className="row"><Button size="small" onClick={find} disabled={busy}>{busy ? "Looking…" : `Find on ${siteName(missing)}`}</Button></div>
+          <div className="row">
+            <Button size="small" onClick={find} disabled={busy}>{busy ? "Looking…" : `Find on ${siteName(missing)}`}</Button>
+            {!manual && <Button size="small" onClick={() => setManual(true)} title="Pick the copy yourself; the link is remembered">Search {siteName(missing)} yourself…</Button>}
+          </div>
+          {manual && <ManualLink pack={pack} entryKey={entryKey} site={missing} onClose={() => setManual(false)} onPick={(c) => { onLink(entryKey, c); setManual(false); setCands(null); }} />}
           {error && <ErrorNotice error={error} />}
-          {cands?.length === 0 && <span className="muted" style={{ fontSize: 13 }}>No likely copy on {siteName(missing)}.</span>}
+          {cands?.length === 0 && <span className="muted" style={{ fontSize: 13 }}>No likely copy on {siteName(missing)}. If you know it's there, search for it yourself.</span>}
           {cands && cands.length > 0 && (
             <ul className="match-list">
               {cands.slice(0, 5).map((c) => (

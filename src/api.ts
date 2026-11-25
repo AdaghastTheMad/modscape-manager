@@ -60,7 +60,7 @@ export interface SearchHit {
 export interface AltRef { source: Source; id: string; slug: string; name: string; downloads: number }
 export interface PerSource<T> { modrinth?: T | null; curseforge?: T | null }
 export interface MergedPage { hits: SearchHit[]; totals: PerSource<number>; next: PerSource<number>; notes: string[]; stale: boolean }
-export type Confidence = "verified" | "likely" | "possible";
+export type Confidence = "manual" | "verified" | "likely" | "possible";
 export interface Candidate { source: Source; id: string; slug: string; name: string; iconUrl?: string | null; downloads: number; confidence: Confidence; reason: string }
 export interface EntryMatches { key: string; candidates: Candidate[] }
 
@@ -91,7 +91,8 @@ export type Fix =
   | { kind: "remove"; key: string }
   | { kind: "unpin"; key: string }
   | { kind: "pinTo"; key: string; versionId: string; versionNumber: string }
-  | { kind: "useSource"; key: string; source: Source };
+  | { kind: "useSource"; key: string; source: Source }
+  | { kind: "setKind"; key: string; to: EntryKindT };
 export interface Issue { id: string; severity: Severity; kind: string; entryKey?: string | null; otherKey?: string | null; message: string; fix?: Fix | null }
 export interface Suggestion { projectId: string; name: string; summary: string; iconUrl?: string | null; suggestedBy: string[] }
 export interface Analysis { entries: Record<string, EntryReport>; issues: Issue[]; suggestions: Suggestion[]; complete: boolean }
@@ -194,6 +195,9 @@ export const api = {
   searchAll: (query: SearchQuery, sources: Source[], prefer: Source, mrOffset = 0, cfOffset = 0) =>
     call<MergedPage>("search_all", { query, sources, prefer, mrOffset, cfOffset }),
   findMatches: (pack: Pack, key: string) => call<Candidate[]>("find_matches", { pack, key }),
+  /** Remember that two projects are the same, so matching offers the link first from now on. */
+  rememberLink: (modrinthId: string, curseforgeId: number) => call<void>("remember_link", { modrinthId, curseforgeId }),
+  forgetLink: (modrinthId: string, curseforgeId: number) => call<void>("forget_link", { modrinthId, curseforgeId }),
   matchAll: (pack: Pack) => call<EntryMatches[]>("match_all", { pack }),
   planRemoval: (pack: Pack, keys: string[]) => call<string[]>("plan_removal", { pack, keys }),
   entryVersions: (projectId: string, mcVersion: string, loader: Loader, kind: EntryKindT = "mod") => call<FileInfo[]>("entry_versions", { projectId, mcVersion, loader, kind }),

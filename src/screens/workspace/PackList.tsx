@@ -16,6 +16,7 @@ export function fixLabel(f: Fix): string {
     case "unpin": return "Unpin";
     case "pinTo": return `Pin ${f.versionNumber}`;
     case "useSource": return `Use ${f.source === "modrinth" ? "Modrinth" : "CurseForge"}`;
+    case "setKind": return f.to === "mod" ? "Use the mod" : `Use as ${f.to}`;
   }
 }
 

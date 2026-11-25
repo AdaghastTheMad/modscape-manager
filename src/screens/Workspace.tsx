@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { api, type AddPlan, type Analysis, type AppError, type Candidate, type EntryMatches, type Fix, type SearchHit, type Source, type Suggestion } from "../api";
 import { Button, ErrorNotice, Input, Modal, Notice, Select, Tabs } from "../components/kit";
 import { typingIn } from "../hooks";
-import { applyPlan, applyPreference, catalogId, entryFromHit, entryName, findByCatalogId, findHit, loaderLabel, nowIso, syncPulledInBy, withSource, type ChannelPolicy, type Pack, type PackEntry, type SourcePreference } from "../model";
+import { applyPlan, applyPreference, kindLabel, catalogId, entryFromHit, entryName, findByCatalogId, findHit, loaderLabel, nowIso, syncPulledInBy, withSource, type ChannelPolicy, type Pack, type PackEntry, type SourcePreference } from "../model";
 import { ModIcon, SourceBadge } from "../components/kit";
 import { Browse } from "./workspace/Browse";
 import { Details, type Selection } from "./workspace/Details";
@@ -25,6 +25,7 @@ import { restore, stateOf, type PackState } from "../history";
 import { SnapshotsDialog } from "./workspace/SnapshotsDialog";
 
 import { IS_MAC } from "../components/Shortcuts";
+import { uiClick } from "../sound";
 const MOD = IS_MAC ? "⌘" : "Ctrl+";
 const REDO_KEYS = IS_MAC ? "⇧⌘Z" : "Ctrl+Y";
 
@@ -433,9 +434,16 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
       let next: PackEntry = { ...e, ref };
       if (p.sourcePreference !== "mixed") next = withSource(next, p.sourcePreference);
       return { ...p, entries: { ...p.entries, [key]: next } };
-    });
+    }, { label: `link ${c.name}` });
+    // Every link you confirm is remembered, so matching offers it first next time (any pack).
+    const e = latest.current?.entries[key];
+    const mr = c.source === "modrinth" ? c.id : e?.ref.modrinthId;
+    const cf = c.source === "curseforge" ? Number(c.id) : e?.ref.curseforgeId;
+    if (mr && cf != null) api.rememberLink(mr, cf).catch(() => {});
   }, [update]);
   const unlink = useCallback((key: string, source: Source) => {
+    const e0 = latest.current?.entries[key];
+    if (e0?.ref.modrinthId && e0.ref.curseforgeId != null) api.forgetLink(e0.ref.modrinthId, e0.ref.curseforgeId).catch(() => {});
     update((p) => {
       const e = p.entries[key];
       if (!e) return p;
@@ -470,7 +478,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
       const results = await api.matchAll(p);
       // Only byte-identical files are pre-ticked; everything else waits for you.
       const picked = new Map<string, Candidate>();
-      for (const r of results) if (r.candidates[0]?.confidence === "verified") picked.set(r.key, r.candidates[0]);
+      for (const r of results) if ((r.candidates[0]?.confidence === "verified" || r.candidates[0]?.confidence === "manual")) picked.set(r.key, r.candidates[0]);
       setMatchReview({ results, picked });
     } catch (e) { setError(e as AppError); }
     finally { setMatching(false); }
@@ -488,8 +496,15 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
       case "unpin": return pin(f.key, null);
       case "pinTo": return pin(f.key, f.versionId);
       case "useSource": return useSource(f.key, f.source);
+      case "setKind": {
+        const name = latest.current?.entries[f.key]?.display.name ?? "It";
+        // A pin was for the other kind's file, so it goes; the new kind floats to its newest build.
+        update((p) => (p.entries[f.key] ? { ...p, entries: { ...p.entries, [f.key]: { ...p.entries[f.key], kind: f.to, fileId: undefined } } } : p), { label: `use ${name} as a ${kindLabel(f.to)}` });
+        setNotice({ title: `${name} is now a ${kindLabel(f.to)}`, lines: f.to === "mod" ? ["If nothing else needs Paxi, the checks will offer to remove it."] : [], suggestions: [], tone: "ok" });
+        return;
+      }
     }
-  }, [addProject, remove, pin, useSource]);
+  }, [addProject, remove, pin, useSource, update]);
   const dismiss = useCallback((s: Suggestion) => {
     update((p) => (p.dismissedSuggestions.includes(s.projectId) ? p : { ...p, dismissedSuggestions: [...p.dismissedSuggestions, s.projectId] }));
   }, [update]);
@@ -499,15 +514,15 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     const onKey = (e: KeyboardEvent) => {
       if (typingIn(e) || orphanPrompt || document.querySelector(".mc-modal-backdrop")) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && !e.altKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); step(e.shiftKey ? "redo" : "undo"); return; }
-      if (e.ctrlKey && !e.metaKey && (e.key === "y" || e.key === "Y")) { e.preventDefault(); step("redo"); return; }
-      if (mod && e.shiftKey && (e.key === "s" || e.key === "S")) { e.preventDefault(); setSnapshotsOpen(true); return; }
-      if (mod && !e.shiftKey && (e.key === "e" || e.key === "E")) { e.preventDefault(); flush().then(() => setExporting(true)); return; }
+      if (mod && !e.altKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); uiClick(); step(e.shiftKey ? "redo" : "undo"); return; }
+      if (e.ctrlKey && !e.metaKey && (e.key === "y" || e.key === "Y")) { e.preventDefault(); uiClick(); step("redo"); return; }
+      if (mod && e.shiftKey && (e.key === "s" || e.key === "S")) { e.preventDefault(); uiClick(); setSnapshotsOpen(true); return; }
+      if (mod && !e.shiftKey && (e.key === "e" || e.key === "E")) { e.preventDefault(); uiClick(); flush().then(() => setExporting(true)); return; }
       if (mod && !e.shiftKey && (e.key === "s" || e.key === "S")) { e.preventDefault(); flush(); return; }
       if (e.key === "Escape" && selection) { setSelection(null); return; }
       if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
-      if ((e.key === "g" || e.key === "G") && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setView((v) => (v === "graph" ? "list" : "graph")); }
-      if ((e.key === "Delete" || e.key === "Backspace") && selection?.kind === "entry") { e.preventDefault(); remove(selection.key); }
+      if ((e.key === "g" || e.key === "G") && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); uiClick(); setView((v) => (v === "graph" ? "list" : "graph")); }
+      if ((e.key === "Delete" || e.key === "Backspace") && selection?.kind === "entry") { e.preventDefault(); uiClick(); remove(selection.key); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

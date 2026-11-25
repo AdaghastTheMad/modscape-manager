@@ -269,7 +269,19 @@ async fn search_all(
 #[tauri::command]
 async fn find_matches(state: St<'_>, pack: Pack, key: String) -> AppResult<Vec<sources::matching::Candidate>> {
     let e = pack.entries.get(&key).ok_or_else(|| AppError::Invalid("That mod isn't in the pack.".into()))?;
-    sources::matching::find_counterparts(&state.modrinth, &state.curseforge, e, &pack.mc_version, pack.loader).await
+    let manual = state.db.manual_links().unwrap_or_default();
+    sources::matching::find_counterparts_with(&state.modrinth, &state.curseforge, e, &pack.mc_version, pack.loader, &manual).await
+}
+
+/// Remembers that these two projects are the same (offered first, pre-ticked, from now on).
+#[tauri::command]
+fn remember_link(state: St<'_>, modrinth_id: String, curseforge_id: u64) -> AppResult<()> {
+    state.db.remember_link(&modrinth_id, curseforge_id)
+}
+
+#[tauri::command]
+fn forget_link(state: St<'_>, modrinth_id: String, curseforge_id: u64) -> AppResult<()> {
+    state.db.forget_link(&modrinth_id, curseforge_id)
 }
 
 #[derive(serde::Serialize)]
@@ -294,10 +306,12 @@ pub async fn match_all_impl(st: &AppState, pack: &Pack) -> AppResult<Vec<EntryMa
     }
     let (mc, loader) = (pack.mc_version.clone(), pack.loader);
     let (mr, cf) = (&st.modrinth, &st.curseforge);
+    let manual = st.db.manual_links().unwrap_or_default();
+    let manual = &manual;
     let futs = todo.into_iter().map(|(key, e)| {
         let mc = mc.clone();
         Box::pin(async move {
-            let candidates = sources::matching::find_counterparts(mr, cf, &e, &mc, loader).await.unwrap_or_default();
+            let candidates = sources::matching::find_counterparts_with(mr, cf, &e, &mc, loader, manual).await.unwrap_or_default();
             EntryMatches { key, candidates }
         }) as std::pin::Pin<Box<dyn std::future::Future<Output = EntryMatches> + Send + '_>>
     });
@@ -809,6 +823,8 @@ pub fn run() {
             search,
             search_all,
             find_matches,
+            remember_link,
+            forget_link,
             match_all,
             project_details,
             categories,

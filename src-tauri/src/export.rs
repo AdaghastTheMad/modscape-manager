@@ -194,15 +194,6 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
 
     let mut todo = Vec::new();
     for (k, e) in &pack.entries {
-        if format == Format::CurseforgeZip && e.kind == EntryKind::Datapack {
-            // A CurseForge manifest lists only ids; the launcher decides where files go, and none put datapacks in Paxi's folder.
-            excluded.push(Excluded {
-                key: k.clone(),
-                name: e.display.name.clone(),
-                reason: "CurseForge zips can't place datapacks (launchers choose the folder). Export a .mrpack, or keep it in an override template.".into(),
-            });
-            continue;
-        }
         let has_want = match want {
             Source::Modrinth => e.mod_ref.modrinth_id.is_some(),
             Source::Curseforge => e.mod_ref.curseforge_id.is_some(),
@@ -347,6 +338,21 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
         });
     }
     let blocked = files.iter().filter(|f| f.distribution_blocked).count();
+    // A CurseForge manifest lists only ids, so the launcher picks the folder. Prism
+    // (FlameCreationTask::validateOtherResources) moves datapacks to datapacks/,
+    // which Paxi 5.1.3+ also loads ("Load from base 'datapacks' directory", on by default).
+    let cf_datapacks = files.iter().filter(|f| format == Format::CurseforgeZip && f.kind == EntryKind::Datapack).count();
+    if cf_datapacks > 0 {
+        problems.push(Problem {
+            severity: Severity::Info,
+            message: format!(
+                "{cf_datapacks} datapack{}: launchers choose where CurseForge files go. Prism puts datapacks in datapacks/, which Paxi (5.1.3 and later) also loads in every world; other launchers may differ.",
+                if cf_datapacks == 1 { "" } else { "s" }
+            ),
+            fixes: vec![],
+            fix_label: None,
+        });
+    }
     if blocked > 0 && !format.is_list() {
         problems.push(Problem {
             severity: Severity::Warning,
@@ -799,9 +805,9 @@ mod tests {
         for want in ["resourcepacks/rpNew.zip", "shaderpacks/shExact.zip", "config/paxi/datapacks/dpZip.zip", "mods/paxiF.zip"] {
             assert!(paths.contains(&want), "{want} not in {paths:?}");
         }
-        // CurseForge zips can't place datapacks.
+        // CurseForge zips keep datapacks (the launcher places them); only Modrinth-linked ones drop out here.
         let cf = block(plan_export(&pack, &c, Format::CurseforgeZip));
-        assert!(cf.excluded.iter().any(|x| x.name == "Terralith" && x.reason.contains("datapacks")), "{:?}", cf.excluded);
+        assert!(cf.excluded.iter().any(|x| x.name == "Terralith" && x.reason.contains("Only linked on Modrinth")), "{:?}", cf.excluded);
     }
 
     #[test]
