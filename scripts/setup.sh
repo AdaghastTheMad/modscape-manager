@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Modpack Planner — development environment setup.
+# Modscape Manager — development environment setup.
 # Checks every dependency first, reports what's missing, and asks before
 # installing anything (and separately before any sudo). Safe to re-run.
 #
@@ -36,7 +36,7 @@ need_rust="1.90.0"     # current Tauri 2 crates need 1.90+
 ver_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" = "$2" ]; }
 
 OS="$(uname -s)"
-echo "Modpack Planner setup — $OS"
+echo "Modscape Manager setup — $OS"
 
 # ---------------------------------------------------------------- platform libs
 if [ "$OS" = Darwin ]; then

@@ -7,9 +7,9 @@
 //! may read it: that's your call), or CURSEFORGE_API_KEY if set. Only talks to
 //! api.curseforge.com. Writes tests/fixtures/resolver/curseforge.json.
 
-use modpack_planner_lib::resolve::Catalog;
-use modpack_planner_lib::sources::{curseforge::cf_id, Loader};
-use modpack_planner_lib::{store, AppState};
+use modscape_manager_lib::resolve::Catalog;
+use modscape_manager_lib::sources::{curseforge::cf_id, Loader};
+use modscape_manager_lib::{store, AppState};
 use serde_json::{json, Map, Value};
 
 // (CurseForge mod id, label) per scenario; required deps are followed one hop.
@@ -40,7 +40,7 @@ fn main() {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!("  {pid} {mc}: {e}");
-                        if matches!(e, modpack_planner_lib::error::AppError::NoCurseForgeKey | modpack_planner_lib::error::AppError::Api { status: 401 | 403, .. }) {
+                        if matches!(e, modscape_manager_lib::error::AppError::NoCurseForgeKey | modscape_manager_lib::error::AppError::Api { status: 401 | 403, .. }) {
                             std::process::exit(1);
                         }
                         continue;
@@ -49,8 +49,8 @@ fn main() {
                 println!("  {mc} {loader:?} {pid}: {} files", vs.len());
                 for v in vs.iter().take(3) {
                     for d in &v.dependencies {
-                        if d.dependency_type == modpack_planner_lib::resolve::DepType::Required {
-                            if let Some(n) = d.project_id.as_deref().and_then(modpack_planner_lib::sources::curseforge::parse_id) {
+                        if d.dependency_type == modscape_manager_lib::resolve::DepType::Required {
+                            if let Some(n) = d.project_id.as_deref().and_then(modscape_manager_lib::sources::curseforge::parse_id) {
                                 todo.push(n);
                             }
                         }

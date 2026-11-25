@@ -244,7 +244,7 @@ const SCENES = {
     $.click('.entry', 'Base configs'); await $.sleep(1200);
     $.click('.tpl-file', 'jei'); await $.sleep(1000);
     // Don't show this machine's folder path in a public screenshot.
-    for (const c of document.querySelectorAll('code')) if (c.textContent.includes('/templates/') || c.textContent.includes('bridge-templates')) c.textContent = '~/Library/Application Support/io.github.adaghastthemad.modpackplanner/templates/<id>/files';
+    for (const c of document.querySelectorAll('code')) if (c.textContent.includes('/templates/') || c.textContent.includes('bridge-templates')) c.textContent = '~/Library/Application Support/io.github.adaghastthemad.modscapemanager/templates/<id>/files';
     $.mark(1, $.find('button', 'Import…'));
     $.mark(2, $.find('.tpl-files'));
     $.mark(3, $.find('.mini-badge'), { right: true });

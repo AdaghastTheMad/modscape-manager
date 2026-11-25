@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 
-pub const PROJECT_FORMAT: &str = "modpack-planner-project";
+pub const PROJECT_FORMAT: &str = "modscape-manager-project";
+/// Files saved before the rename (the app was called Modpack Planner) still open.
+pub const LEGACY_PROJECT_FORMAT: &str = "modpack-planner-project";
 pub const PROJECT_SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -319,15 +321,15 @@ pub fn plan_removal(pack: &Pack, removing: &[String]) -> Vec<String> {
 
 pub fn parse_project(text: &str) -> AppResult<(Pack, Vec<String>)> {
     let v: Value = serde_json::from_str(text).map_err(|e| AppError::Invalid(format!("That file isn't valid JSON: {e}")))?;
-    if v.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
+    if !matches!(v.get("format").and_then(Value::as_str), Some(PROJECT_FORMAT | LEGACY_PROJECT_FORMAT)) {
         return Err(AppError::Invalid(
-            "That JSON file isn't a Modpack Planner project. (Pack formats like .mrpack are imported separately, in a later version.)".into(),
+            "That JSON file isn't a Modscape Manager project. (Pack formats like .mrpack are imported separately, in a later version.)".into(),
         ));
     }
     let schema = v.get("schemaVersion").and_then(Value::as_u64).unwrap_or(0) as u32;
     if schema > PROJECT_SCHEMA {
         return Err(AppError::Invalid(format!(
-            "This project was saved by a newer Modpack Planner (format v{schema}; this build reads up to v{PROJECT_SCHEMA}). Update the app to open it."
+            "This project was saved by a newer Modscape Manager (format v{schema}; this build reads up to v{PROJECT_SCHEMA}). Update the app to open it."
         )));
     }
     let file: ProjectFile = serde_json::from_value(v).map_err(|e| AppError::Invalid(format!("The project file is damaged or incomplete: {e}")))?;
@@ -461,6 +463,8 @@ pub mod tests {
     fn project_rejects_foreign_and_newer() {
         assert!(parse_project("{}").is_err());
         assert!(parse_project("not json").is_err());
+        let legacy = to_project_json(&pack(), "t").unwrap().replace(PROJECT_FORMAT, LEGACY_PROJECT_FORMAT);
+        assert!(parse_project(&legacy).is_ok(), "files from before the rename still open");
         let newer = format!(r#"{{"format":"{PROJECT_FORMAT}","schemaVersion":99,"pack":{{}}}}"#);
         let err = parse_project(&newer).unwrap_err().to_string();
         assert!(err.contains("newer"), "{err}");

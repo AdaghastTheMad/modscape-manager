@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Modpack Planner — one-stop Linux build (Linux Mint / Ubuntu).
+# Modscape Manager — one-stop Linux build (Linux Mint / Ubuntu).
 #
 # Run it from the project folder on the Linux machine:
 #   scripts/linux-build.sh
@@ -63,7 +63,7 @@ DEB="$(ls -t installers/*.deb 2>/dev/null | head -1 || true)"
 IMG="$(ls -t installers/*.AppImage 2>/dev/null | head -1 || true)"
 if [ -n "$DEB" ] && ask "Install $(basename "$DEB") now? (sudo apt will ask for your password)"; then
   sudo apt install -y "./$DEB"
-  echo "Installed. Find Modpack Planner in your applications menu (Utility), or run: modpack-planner"
+  echo "Installed. Find Modscape Manager in your applications menu (Utility), or run: modscape-manager"
 else
   [ -n "$DEB" ] && echo "Install it later with:  sudo apt install ./$DEB"
 fi

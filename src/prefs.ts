@@ -1,7 +1,7 @@
 // Small UI preferences kept in the webview's localStorage (nothing leaves the machine).
 import { useEffect, useState } from "react";
 
-const KEY = "modpack-planner.prefs";
+const KEY = "modscape-manager.prefs";
 export interface Prefs {
   /** Keep the list's grouping and the graph's regions the same. Off by default. */
   syncGrouping: boolean;

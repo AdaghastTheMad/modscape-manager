@@ -1,4 +1,4 @@
-# Modpack Planner — CLAUDE.md
+# Modscape Manager — CLAUDE.md
 
 Source of truth: `Modpack Planner — Design Doc.md` (this folder). This file summarises it; when they disagree, the design doc wins unless a decision below says otherwise. Keep this file updated as milestones land and decisions are made.
 
@@ -22,7 +22,7 @@ A standalone **Tauri 2 desktop app** (Linux Mint + macOS, no Windows) for planni
 - **UI:** Vite + React + TypeScript; Cytoscape.js for the graph.
 - **CurseForge API key** lives in the OS keychain (macOS Keychain / Linux Secret Service), never reaches the UI. No key → Modrinth-only mode.
 - Each API is a client module behind one **`ModSource` trait**; the UI never cares which site a mod came from.
-- Modrinth calls carry a unique, generic User-Agent `modpack-planner/<version>` (no personal contact; add the public project URL once one exists, e.g. `modpack-planner/<version> (+<repo url>)`).
+- Modrinth calls carry a unique, generic User-Agent `modscape-manager/<version>` (no personal contact; add the public project URL once one exists, e.g. `modscape-manager/<version> (+<repo url>)`).
 - **Cache:** every API response in SQLite with timestamp, 24 h TTL, manual refresh.
 - **Storage:** SQLite in the app data dir (packs, payloads, API cache). Packs and payloads also save/load as plain JSON. Override templates are plain folders in the app data dir.
 - Allowed outbound hosts: Modrinth, CurseForge, loader version metadata. Nothing else. **No telemetry.**
@@ -91,12 +91,12 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 - **Release extras (Nov 24):** MIT license (`LICENSE`, also in Cargo/package/bundle metadata). README tours every tab with annotated screenshots from `scripts/capture-screens.mjs` (headless Brave/Chrome with a throwaway profile, against the dev bridge with demo data: fixture packs, starters, a sample template from `test-env/`; it swaps the local templates path for a generic one so no username shows). App icon drawn by `scripts/make-icon.py` (original art: isometric grass block dissolving into a blueprint; `pnpm tauri icon docs/images/icon.png`, then drop the android/ios/Windows outputs). **Danger zone** (Settings): `reset_data(areas)` for packs, payloads (back to starters), templates (whole folder incl. trash), remembered links, cache, CurseForge key (non-fatal if the keychain is unreachable; the dev bridge skips it), plus interface prefs in the webview; Factory reset needs typing RESET.
 - Installers (M12): `scripts/build.sh` (`--skip-tests`, `--yes`). Checks the toolchain with `scripts/setup.sh --check` (which now exits 1 when something's missing) and installs nothing; runs typecheck + cargo tests; `pnpm tauri build --bundles dmg` on macOS, `deb,appimage` on Linux (asks first before Tauri's one-time linuxdeploy download for the AppImage; "no" builds the .deb only); `CI=true` so the dmg step skips its Finder-layout AppleScript; copies the results to `installers/` (git-ignored). Unsigned: macOS needs right-click → Open the first time. Linux builds must run on Linux (not yet tried; Mint check pending).
 - Rust tests: `cd src-tauri && cargo test`. Resolver tests run on recorded Modrinth responses in `src-tauri/tests/fixtures/resolver/` (`modrinth.json` from `python3 scripts/record-fixtures.py`, plus hand-written `synthetic.json` for cases real data lacks). Live API smoke test (not in the normal run): `cargo test live -- --ignored --nocapture`. Frontend: `pnpm typecheck`, `pnpm build`.
-- App data (SQLite `planner.db`: packs + API cache) lives in the OS app-data dir for `io.github.adaghastthemad.modpackplanner`.
+- App data (SQLite `planner.db`: packs + API cache) lives in the OS app-data dir for `io.github.adaghastthemad.modscapemanager`.
 
 ## Implementation notes
 - Every outbound request goes through `src-tauri/src/fetch.rs`: host allow-list (`ALLOWED_HOSTS`), https only, SQLite cache (24 h; icons 30 d), stale-cache fallback when offline or on 5xx.
 - Mod icons reach the webview only as data: URLs from the `icon` command; the CSP blocks all remote loads.
-- Pack project files: `{ format: "modpack-planner-project", schemaVersion: 1, pack }`. Unknown fields are preserved (`extra`), newer schema versions are refused with a clear message, imports are normalised (duplicates, dangling links, missing ids) and re-id'd on collision.
+- Pack project files: `{ format: "modscape-manager-project", schemaVersion: 1, pack }`. Unknown fields are preserved (`extra`), newer schema versions are refused with a clear message, imports are normalised (duplicates, dangling links, missing ids) and re-id'd on collision.
 - NeoForge versions: 1.X.Y → `X.Y.*`, year-based 26.A.B → `26.A.B.*`. Quilt accepts Fabric mods in search/compat checks.
 - **Library detection:** user override wins; else a mod is a library if "library" is its only Modrinth category, or it has the tag and was pulled in as a dependency (Modrinth tags JEI/EMI as library too, so tags alone mislead).
 - **Resolver (`src-tauri/src/resolve.rs`)**, all behind the `Catalog` trait:
@@ -182,6 +182,7 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 - Never enter the owner's CurseForge key or any credential on their behalf; the owner pastes it into the settings screen.
 
 ## Decisions log
+- Nov 24, 2026 (release): **renamed Modpack Planner → Modscape Manager** (owner). New identifier `io.github.adaghastthemad.modscapemanager` (fresh data folder), keychain service `modscape-manager`, User-Agent `modscape-manager/<version>`, file formats `modscape-manager-project` / `-payload` (the old `modpack-planner-*` formats still open). The design doc keeps its original title. Repo: `github.com/AdaghastTheMad/modscape-manager`, public, MIT.
 - Nov 23, 2026: all items in the design doc's "Decided" list.
 - Nov 24, 2026 (M6 review): env rule fixed (never optional); side notes removed from checks; keepable dropped dependencies in Duplicate to version; Live Scan added as M14. Cross-check of linked mods' deps against their other-site copy: approved as a per-pack toggle, **off by default** (saves CurseForge API calls).
 - Nov 24, 2026 (M5 review): owner approved committing M5 and starting M6 after the log review.

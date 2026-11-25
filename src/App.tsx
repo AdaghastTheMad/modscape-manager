@@ -52,7 +52,7 @@ export default function App() {
   return (
     <div className={`app${prefs.backdrop ? " app--backdrop" : ""}`}>
       <header className="app-header">
-        <h1>Modpack Planner</h1>
+        <h1>Modscape Manager</h1>
         <Tabs label="Main" value={screen} onChange={go} tabs={[
           { id: "packs", label: openPack ? "Workspace" : "Packs" },
           { id: "payloads", label: "Payloads" },

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Modpack Planner",
+  "productName": "Modscape Manager",
   "version": "0.1.0",
-  "identifier": "io.github.adaghastthemad.modpackplanner",
+  "identifier": "io.github.adaghastthemad.modscapemanager",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Modpack Planner",
+        "title": "Modscape Manager",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run Modpack Planner in development mode with hot reload.
+# Run Modscape Manager in development mode with hot reload.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Prefer rustup's toolchain even if the shell profile doesn't load it yet.

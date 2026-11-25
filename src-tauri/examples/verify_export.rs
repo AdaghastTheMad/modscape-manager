@@ -22,13 +22,13 @@ fn main() {
     let stem = std::path::Path::new(&path).file_stem().unwrap().to_string_lossy().to_string();
     let dest = root.join("downloads").join(&stem);
     std::fs::create_dir_all(dest.join("mods")).unwrap();
-    let http = reqwest::blocking::Client::builder().user_agent(modpack_planner_lib::USER_AGENT).timeout(std::time::Duration::from_secs(600)).build().unwrap();
+    let http = reqwest::blocking::Client::builder().user_agent(modscape_manager_lib::USER_AGENT).timeout(std::time::Duration::from_secs(600)).build().unwrap();
     let files = idx["files"].as_array().unwrap();
     let (mut ok, mut bad) = (0, Vec::new());
     for f in files {
         let rel = f["path"].as_str().unwrap();
         let url = f["downloads"][0].as_str().unwrap();
-        let host_ok = reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| modpack_planner_lib::export::MRPACK_HOSTS.contains(&h))).unwrap_or(false);
+        let host_ok = reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| modscape_manager_lib::export::MRPACK_HOSTS.contains(&h))).unwrap_or(false);
         if !host_ok || rel.contains("..") {
             bad.push(format!("{rel}: refused URL {url}"));
             continue;

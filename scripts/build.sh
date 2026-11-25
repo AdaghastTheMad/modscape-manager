@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Modpack Planner — build the installers.
+# Modscape Manager — build the installers.
 #
 #   macOS:  .dmg (plus the .app inside it)
 #   Linux:  .deb and .AppImage (Linux Mint / Ubuntu; build on Linux)
@@ -92,7 +92,7 @@ done
 if [ "$OS" = Darwin ]; then
   cat <<EOF
 
-Modpack Planner $VERSION is built. The app isn't signed with an Apple
+Modscape Manager $VERSION is built. The app isn't signed with an Apple
 Developer ID, so the first time you open it macOS will refuse: right-click
 (or Control-click) the app in Applications → Open → Open. After that it
 opens normally.
@@ -100,7 +100,7 @@ EOF
 else
   cat <<EOF
 
-Modpack Planner $VERSION is built.
+Modscape Manager $VERSION is built.
   .deb:      sudo apt install ./installers/<file>.deb   (asks for your password)
   .AppImage: chmod +x installers/<file>.AppImage, then run it
 EOF

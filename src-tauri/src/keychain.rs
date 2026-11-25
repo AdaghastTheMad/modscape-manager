@@ -6,7 +6,7 @@
 use crate::error::{AppError, AppResult};
 use serde::Serialize;
 
-const SERVICE: &str = "modpack-planner";
+const SERVICE: &str = "modscape-manager";
 const ACCOUNT: &str = "curseforge-api-key";
 
 #[derive(Debug, Serialize)]
@@ -40,7 +40,7 @@ pub fn backend_name() -> &'static str {
 
 fn fix_guide() -> String {
     if cfg!(target_os = "linux") {
-        "Modpack Planner keeps your CurseForge key in the desktop keyring through the \
+        "Modscape Manager keeps your CurseForge key in the desktop keyring through the \
          freedesktop Secret Service, and couldn't reach one. This usually means no keyring \
          daemon is running, or the default (\"Login\") keyring is missing or locked.\n\n\
          To fix it on Linux Mint / Ubuntu:\n\
@@ -53,10 +53,10 @@ fn fix_guide() -> String {
          Until then the app works in Modrinth-only mode. Your key is never saved in a plain file."
             .into()
     } else if cfg!(target_os = "macos") {
-        "macOS refused access to the Keychain. If a \"modpack-planner wants to use your \
+        "macOS refused access to the Keychain. If a \"modscape-manager wants to use your \
          keychain\" prompt appeared, choose Always Allow. Otherwise open Keychain Access, \
          make sure the \"login\" keychain is unlocked (File → Unlock Keychain), and try again. \
-         If an old \"modpack-planner\" entry exists, deleting it and saving the key again \
+         If an old \"modscape-manager\" entry exists, deleting it and saving the key again \
          resets the permission.\n\nUntil then the app works in Modrinth-only mode."
             .into()
     } else {

@@ -9,9 +9,9 @@
 //!
 //!   cd src-tauri && cargo run --example build_fixture_packs [-- neoforge-1.21.1|fabric-26.1.2]
 
-use modpack_planner_lib::resolve::{self, Fix, Severity};
-use modpack_planner_lib::sources::{Loader, ModSource, SearchQuery, Source};
-use modpack_planner_lib::{export, loaders, model, store, AppState};
+use modscape_manager_lib::resolve::{self, Fix, Severity};
+use modscape_manager_lib::sources::{Loader, ModSource, SearchQuery, Source};
+use modscape_manager_lib::{export, loaders, model, store, AppState};
 
 fn main() {
     let st = AppState::new(store::Db::memory());

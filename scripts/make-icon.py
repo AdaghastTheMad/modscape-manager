@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the Modpack Planner app icon (original art, no game textures).
+"""Draws the Modscape Manager app icon (original art, no game textures).
 
 An isometric grass block whose upper-right corner dissolves, texel by texel,
 into an architectural blueprint: blue paper, a fine grid, white wireframe
@@ -177,14 +177,16 @@ for a, d in [(TR, R), (TR, mul(L, -1)), (TR, mul(D, -1))]:
     e = add(a, mul(d, ext / ln))
     wd.line([a, e], fill=(70, 130, 210, 255), width=3 * SS)
 off = mul((R[1], -R[0]), 38 * SS / s)  # perpendicular offset, up and to the right
-p1, p2 = add(T, off, mul(R, 0.55)), add(TR, off)
+# The dimension line spans the whole upper-right edge (top vertex to right vertex),
+# with witness lines from both corners and a tick per texel (longer every 4).
+p1, p2 = add(T, off), add(TR, off)
 DIM = (70, 130, 210, 255)  # dimension marks sit outside the block, so they need a colour that shows on light and dark
+for v in (T, TR):
+    wd.line([add(v, mul(off, 0.25)), add(v, mul(off, 1.45))], fill=DIM, width=2 * SS)
 wd.line([p1, p2], fill=DIM, width=3 * SS)
-for p in (p1, p2):
-    wd.line([add(p, mul(off, -0.45)), add(p, mul(off, 0.45))], fill=DIM, width=3 * SS)
-for k in range(1, 8):
-    p = add(p1, mul((p2[0] - p1[0], p2[1] - p1[1]), k / 8))
-    wd.line([p, add(p, mul(off, 0.22 if k % 4 else 0.38))], fill=DIM, width=2 * SS)
+for k in range(1, 16):
+    p = add(p1, mul((p2[0] - p1[0], p2[1] - p1[1]), k / 16))
+    wd.line([p, add(p, mul(off, 0.22 if k % 4 else 0.4))], fill=DIM, width=2 * SS)
 
 # ---------------------------------------------------------------- compose
 out = Image.new("RGBA", (W, W), (0, 0, 0, 0))

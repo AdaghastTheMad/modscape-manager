@@ -12,7 +12,7 @@ Only talks to api.modrinth.com, with the app's generic User-Agent.
 import json, sys, time, urllib.parse, urllib.request
 from pathlib import Path
 
-UA = {"User-Agent": "modpack-planner/fixture-recorder"}
+UA = {"User-Agent": "modscape-manager/fixture-recorder"}
 API = "https://api.modrinth.com/v2"
 SCENARIOS = {
     "1.21.1": ["sodium-extra", "sodium", "iris", "reeses-sodium-options", "modmenu", "fabric-api", "qsl",

@@ -1,4 +1,4 @@
-//! Modpack Planner core. Every network call, all storage and all secrets live
+//! Modscape Manager core. Every network call, all storage and all secrets live
 //! here; the webview only talks to these typed commands.
 
 pub mod error;
@@ -28,8 +28,8 @@ use tauri_plugin_opener::OpenerExt;
 
 /// Generic, identifiable User-Agent (Modrinth asks for one). No personal
 /// contact details: add the public project URL here once one exists,
-/// e.g. "modpack-planner/0.1.0 (+https://github.com/…)".
-pub const USER_AGENT: &str = concat!("modpack-planner/", env!("CARGO_PKG_VERSION"));
+/// e.g. "modscape-manager/0.1.0 (+https://github.com/…)".
+pub const USER_AGENT: &str = concat!("modscape-manager/", env!("CARGO_PKG_VERSION"));
 
 pub struct AppState {
     pub db: Arc<Db>,
@@ -88,7 +88,7 @@ impl AppState {
             .expect("HTTP client");
         let db = Arc::new(db);
         let fetcher = Arc::new(Fetcher::new(http, db.clone()));
-        let templates = templates::Library::new(std::env::temp_dir().join(format!("modpack-planner-templates-{}", uuid::Uuid::new_v4())));
+        let templates = templates::Library::new(std::env::temp_dir().join(format!("modscape-manager-templates-{}", uuid::Uuid::new_v4())));
         Self { modrinth: Modrinth::new(fetcher.clone()), curseforge: CurseForge::new(fetcher.clone()), db, fetcher, templates }
     }
 
@@ -430,7 +430,7 @@ fn payload_updates(state: St<'_>, pack: Pack) -> AppResult<Vec<payload::UpdateNo
 async fn export_payload(app: tauri::AppHandle, state: St<'_>, id: String) -> AppResult<Option<String>> {
     let p = state.db.get_payload(&id)?.ok_or_else(|| AppError::Invalid("That payload no longer exists.".into()))?;
     let json = payload::to_file_json(&p)?;
-    let picked = app.dialog().file().set_title("Export payload").add_filter("Modpack Planner payload", &["json"]).set_file_name(format!("{}.payload.json", safe_file_name(&p.name))).blocking_save_file();
+    let picked = app.dialog().file().set_title("Export payload").add_filter("Modscape Manager payload", &["json"]).set_file_name(format!("{}.payload.json", safe_file_name(&p.name))).blocking_save_file();
     let Some(fp) = picked else { return Ok(None) };
     let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
     std::fs::write(&path, json).map_err(|e| AppError::Storage(format!("Couldn't write the file: {e}")))?;
@@ -453,7 +453,7 @@ pub fn import_payload_text(st: &AppState, text: &str) -> AppResult<SavedPayload>
 
 #[tauri::command]
 async fn import_payload(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<SavedPayload>> {
-    let picked = app.dialog().file().set_title("Import payload").add_filter("Modpack Planner payload", &["json"]).blocking_pick_file();
+    let picked = app.dialog().file().set_title("Import payload").add_filter("Modscape Manager payload", &["json"]).blocking_pick_file();
     let Some(fp) = picked else { return Ok(None) };
     let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
     let text = std::fs::read_to_string(&path).map_err(|e| AppError::Storage(format!("Couldn't read the file: {e}")))?;
@@ -609,7 +609,7 @@ async fn export_project(app: tauri::AppHandle, pack: Pack, exported_at: String) 
         .dialog()
         .file()
         .set_title("Save planner project")
-        .add_filter("Modpack Planner project", &["json"])
+        .add_filter("Modscape Manager project", &["json"])
         .set_file_name(format!("{}.planner.json", safe_file_name(&pack.name)))
         .blocking_save_file();
     let Some(fp) = picked else { return Ok(None) };
@@ -622,7 +622,7 @@ async fn export_project(app: tauri::AppHandle, pack: Pack, exported_at: String) 
 /// Opens a file dialog, reads a planner project and stores it as a new pack.
 #[tauri::command]
 async fn import_project(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<Saved>> {
-    let picked = app.dialog().file().set_title("Open planner project").add_filter("Modpack Planner project", &["json"]).blocking_pick_file();
+    let picked = app.dialog().file().set_title("Open planner project").add_filter("Modscape Manager project", &["json"]).blocking_pick_file();
     let Some(fp) = picked else { return Ok(None) };
     let path = fp.into_path().map_err(|e| AppError::Invalid(e.to_string()))?;
     let meta = std::fs::metadata(&path).map_err(|e| AppError::Storage(e.to_string()))?;
@@ -930,7 +930,7 @@ pub fn run() {
             template_uses
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Modpack Planner");
+        .expect("error while running Modscape Manager");
 }
 
 /// Live checks against the real APIs. Not part of the normal test run

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="144" alt="Modpack Planner icon: a grass block dissolving into a blueprint">
+  <img src="docs/images/icon.png" width="144" alt="Modscape Manager icon: a grass block dissolving into a blueprint">
 </p>
 
-<h1 align="center">Modpack Planner</h1>
+<h1 align="center">Modscape Manager</h1>
 
 <p align="center">
   <b>Plan Minecraft modpacks as metadata. Pick mods, see how they depend on each other, and export a pack your launcher installs.</b><br>
@@ -11,7 +11,7 @@
 
 ---
 
-Modpack Planner is a desktop app for *designing* modpacks. You search Modrinth and CurseForge side by side, add mods (their required dependencies come along on their own), and the app keeps checking the whole pack as you go: missing dependencies, mods that clash, mods with no build for your version. When it's right, you export an `.mrpack`, CurseForge zip or packwiz folder and import it into Prism Launcher (or the Modrinth App, ATLauncher, the CurseForge app…).
+Modscape Manager is a desktop app for *designing* modpacks. You search Modrinth and CurseForge side by side, add mods (their required dependencies come along on their own), and the app keeps checking the whole pack as you go: missing dependencies, mods that clash, mods with no build for your version. When it's right, you export an `.mrpack`, CurseForge zip or packwiz folder and import it into Prism Launcher (or the Modrinth App, ATLauncher, the CurseForge app…).
 
 **It never downloads a mod.** Packs are lists of projects and file versions; the launcher fetches the files when it installs the pack.
 
@@ -30,8 +30,8 @@ Modpack Planner is a desktop app for *designing* modpacks. You search Modrinth a
 
 | | |
 |---|---|
-| **macOS** (Apple Silicon) | Open `Modpack Planner_<version>_aarch64.dmg` and drag the app to Applications. The app isn't signed with an Apple Developer ID, so the first time, **right-click it → Open → Open**. After that it opens normally. |
-| **Linux** (Mint / Ubuntu) | `sudo apt install ./Modpack-Planner_<version>_amd64.deb`, or make the `.AppImage` executable and run it. |
+| **macOS** (Apple Silicon) | Open `Modscape Manager_<version>_aarch64.dmg` and drag the app to Applications. The app isn't signed with an Apple Developer ID, so the first time, **right-click it → Open → Open**. After that it opens normally. |
+| **Linux** (Mint / Ubuntu) | `sudo apt install ./Modscape-Manager_<version>_amd64.deb`, or make the `.AppImage` executable and run it. |
 | **From source** | See [Building from source](#building-from-source). Linux has its own step-by-step guide: [docs/LINUX.md](docs/LINUX.md). |
 
 ## Quick start
@@ -232,10 +232,10 @@ scripts/build.sh        # tests, then installers in installers/  (.dmg on macOS,
 - The Rust core makes every request and refuses any host not on its allow-list: `api.modrinth.com`, `cdn.modrinth.com`, `api.curseforge.com`, `media.forgecdn.net` (icons), and the loaders' version lists (`meta.fabricmc.net`, `meta.quiltmc.org`, `maven.neoforged.net`, `maven.minecraftforge.net`). The interface itself can't reach the network. No analytics, no crash reporting, no update pings.
 - The CurseForge key is stored in the macOS Keychain or the Linux Secret Service. If there's no keychain, the app runs Modrinth-only rather than store it in a file.
 - Exports carry no personal information (the pack author field is left empty).
-- Data lives in your OS app-data folder (`io.github.adaghastthemad.modpackplanner`). **Settings → Danger zone** resets any part of it.
+- Data lives in your OS app-data folder (`io.github.adaghastthemad.modscapemanager`). **Settings → Danger zone** resets any part of it.
 
 ## License
 
 [MIT](LICENSE) © 2026 AdaghastTheMad.
 
-Modpack Planner is not affiliated with or endorsed by Mojang Studios, Microsoft, Modrinth or CurseForge. "Minecraft" is a trademark of Mojang Studios. The app icon and all UI art are original; no game textures, sounds or fonts are included (headings use [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans), OFL).
+Modscape Manager is not affiliated with or endorsed by Mojang Studios, Microsoft, Modrinth or CurseForge. "Minecraft" is a trademark of Mojang Studios. The app icon and all UI art are original; no game textures, sounds or fonts are included (headings use [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans), OFL).

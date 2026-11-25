@@ -25,7 +25,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
-pub const PAYLOAD_FORMAT: &str = "modpack-planner-payload";
+pub const PAYLOAD_FORMAT: &str = "modscape-manager-payload";
+/// Payloads exported before the rename still import.
+pub const LEGACY_PAYLOAD_FORMAT: &str = "modpack-planner-payload";
 pub const PAYLOAD_SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -234,11 +236,11 @@ pub fn to_file_json(p: &Payload) -> AppResult<String> {
 
 pub fn parse_file(text: &str) -> AppResult<Payload> {
     let v: Value = serde_json::from_str(text).map_err(|e| AppError::Invalid(format!("That file isn't valid JSON: {e}")))?;
-    if v.get("format").and_then(Value::as_str) != Some(PAYLOAD_FORMAT) {
-        return Err(AppError::Invalid("That JSON file isn't a Modpack Planner payload.".into()));
+    if !matches!(v.get("format").and_then(Value::as_str), Some(PAYLOAD_FORMAT | LEGACY_PAYLOAD_FORMAT)) {
+        return Err(AppError::Invalid("That JSON file isn't a Modscape Manager payload.".into()));
     }
     if v.get("schemaVersion").and_then(Value::as_u64).unwrap_or(0) as u32 > PAYLOAD_SCHEMA {
-        return Err(AppError::Invalid("This payload was saved by a newer Modpack Planner. Update the app to open it.".into()));
+        return Err(AppError::Invalid("This payload was saved by a newer Modscape Manager. Update the app to open it.".into()));
     }
     serde_json::from_value(v["payload"].clone()).map_err(|e| AppError::Invalid(format!("The payload file is damaged: {e}")))
 }

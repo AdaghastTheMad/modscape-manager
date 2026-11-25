@@ -112,7 +112,7 @@ impl Db {
         let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(db_err)?;
         if current as usize > MIGRATIONS.len() {
             return Err(AppError::Storage(
-                "The app's database was created by a newer version of Modpack Planner. Update the app to continue.".into(),
+                "The app's database was created by a newer version of Modscape Manager. Update the app to continue.".into(),
             ));
         }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {

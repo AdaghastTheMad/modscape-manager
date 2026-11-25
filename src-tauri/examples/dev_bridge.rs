@@ -10,7 +10,7 @@
 //!
 //! Packs live in memory; keychain, dialogs and the opener are not available.
 
-use modpack_planner_lib::{model, resolve, store, AppState};
+use modscape_manager_lib::{model, resolve, store, AppState};
 use serde_json::{json, Value};
 
 fn arg<T: serde::de::DeserializeOwned>(args: &Value, k: &str) -> Result<T, Value> {
@@ -25,30 +25,30 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
     use resolve::Catalog;
     let force = a.get("force").and_then(Value::as_bool).unwrap_or(false);
     match cmd {
-        "app_info" => Ok(json!({"version": "dev-bridge", "userAgent": modpack_planner_lib::USER_AGENT, "os": std::env::consts::OS, "allowedHosts": []})),
+        "app_info" => Ok(json!({"version": "dev-bridge", "userAgent": modscape_manager_lib::USER_AGENT, "os": std::env::consts::OS, "allowedHosts": []})),
         "key_status" => Ok(json!({"keychainAvailable": false, "hasKey": false, "backend": "dev bridge", "problem": {"message": "No keychain in the dev bridge", "help": ""}})),
         "search" => to_val(st.source(arg(a, "source")?).search(&arg(a, "query")?).await),
         "search_all" => to_val(
-            modpack_planner_lib::search_all_impl(st, arg(a, "query")?, arg(a, "sources")?, arg(a, "prefer")?, arg(a, "mrOffset")?, arg(a, "cfOffset")?).await,
+            modscape_manager_lib::search_all_impl(st, arg(a, "query")?, arg(a, "sources")?, arg(a, "prefer")?, arg(a, "mrOffset")?, arg(a, "cfOffset")?).await,
         ),
-        "match_all" => to_val(modpack_planner_lib::match_all_impl(st, &arg(a, "pack")?).await),
+        "match_all" => to_val(modscape_manager_lib::match_all_impl(st, &arg(a, "pack")?).await),
         "find_matches" => {
             let pack: model::Pack = arg(a, "pack")?;
             let key: String = arg(a, "key")?;
             let e = pack.entries.get(&key).ok_or(json!({"code": "invalid", "message": "no such entry"}))?;
             let manual = st.db.manual_links().unwrap_or_default();
-            to_val(modpack_planner_lib::sources::matching::find_counterparts_with(&st.modrinth, &st.curseforge, e, &pack.mc_version, pack.loader, &manual).await)
+            to_val(modscape_manager_lib::sources::matching::find_counterparts_with(&st.modrinth, &st.curseforge, e, &pack.mc_version, pack.loader, &manual).await)
         }
-        "project_details" => match arg::<modpack_planner_lib::sources::Source>(a, "source")? {
-            modpack_planner_lib::sources::Source::Modrinth => to_val(st.modrinth.project(&arg::<String>(a, "id")?, force).await),
-            modpack_planner_lib::sources::Source::Curseforge => {
+        "project_details" => match arg::<modscape_manager_lib::sources::Source>(a, "source")? {
+            modscape_manager_lib::sources::Source::Modrinth => to_val(st.modrinth.project(&arg::<String>(a, "id")?, force).await),
+            modscape_manager_lib::sources::Source::Curseforge => {
                 let id: String = arg(a, "id")?;
                 to_val(st.curseforge.project(id.trim_start_matches("cf:").parse().unwrap_or(0), force).await)
             }
         },
         "categories" => to_val(st.modrinth.categories_for(a.get("kind").and_then(|k| serde_json::from_value(k.clone()).ok()).unwrap_or_default(), force).await),
         "game_versions" => to_val(st.modrinth.game_versions(force).await),
-        "loader_versions" => to_val(modpack_planner_lib::loaders::loader_versions(&st.fetcher, arg(a, "loader")?, &arg::<String>(a, "mcVersion")?, force).await),
+        "loader_versions" => to_val(modscape_manager_lib::loaders::loader_versions(&st.fetcher, arg(a, "loader")?, &arg::<String>(a, "mcVersion")?, force).await),
         "icon" => to_val(st.fetcher.icon_data_url(&arg::<String>(a, "url")?).await),
         "list_packs" => to_val(st.db.list_packs()),
         "get_pack" => match st.db.get_pack(&arg::<String>(a, "id")?) {
@@ -79,36 +79,36 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let path = test_env_path(&arg::<String>(a, "path")?)?;
             let plan = st.export_plan(&pack, arg(a, "format")?).await;
             let overrides = st.templates.export_files(&pack).map_err(|e| serde_json::to_value(e).unwrap())?;
-            use modpack_planner_lib::export::{self, Format};
+            use modscape_manager_lib::export::{self, Format};
             let fmt: Format = arg(a, "format")?;
             let r = match fmt {
                 Format::Packwiz => export::write_packwiz(&pack, &plan, &overrides, &path),
-                Format::Markdown => std::fs::write(&path, export::list_markdown(&pack, &plan)).map_err(|e| modpack_planner_lib::error::AppError::Storage(e.to_string())),
-                Format::Csv => std::fs::write(&path, export::list_csv(&pack, &plan)).map_err(|e| modpack_planner_lib::error::AppError::Storage(e.to_string())),
+                Format::Markdown => std::fs::write(&path, export::list_markdown(&pack, &plan)).map_err(|e| modscape_manager_lib::error::AppError::Storage(e.to_string())),
+                Format::Csv => std::fs::write(&path, export::list_csv(&pack, &plan)).map_err(|e| modscape_manager_lib::error::AppError::Storage(e.to_string())),
                 _ => export::write_archive(&pack, &plan, &overrides, &path),
             };
             to_val(r.map(|_| path.display().to_string()))
         }
-        "dev_import_from" => to_val(modpack_planner_lib::import_file_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
-        "dev_import_instance" => to_val(modpack_planner_lib::import_instance_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
+        "dev_import_from" => to_val(modscape_manager_lib::import_file_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
+        "dev_import_instance" => to_val(modscape_manager_lib::import_instance_impl(st, &test_env_path(&arg::<String>(a, "path")?)?).await),
         "plan_port" => to_val(
-            modpack_planner_lib::port::plan_port(&arg(a, "pack")?, &arg(a, "target")?, &st.catalog(), &store::now_iso(), || uuid::Uuid::new_v4().to_string()).await,
+            modscape_manager_lib::port::plan_port(&arg(a, "pack")?, &arg(a, "target")?, &st.catalog(), &store::now_iso(), || uuid::Uuid::new_v4().to_string()).await,
         ),
         "list_payloads" => to_val(st.db.all_payloads()),
-        "save_payload" => to_val(modpack_planner_lib::save_payload_impl(st, arg(a, "payload")?)),
+        "save_payload" => to_val(modscape_manager_lib::save_payload_impl(st, arg(a, "payload")?)),
         "delete_payload" => to_val(st.db.delete_payload(&arg::<String>(a, "id")?)),
-        "restore_starter_payloads" => to_val(modpack_planner_lib::payload::seed_starters(&st.db, &store::now_iso(), true)),
+        "restore_starter_payloads" => to_val(modscape_manager_lib::payload::seed_starters(&st.db, &store::now_iso(), true)),
         "plan_payload" => {
             let ch: Option<std::collections::HashMap<String, String>> = arg(a, "choices")?;
-            to_val(modpack_planner_lib::plan_payload_impl(st, &arg(a, "pack")?, &arg::<String>(a, "payloadId")?, ch.unwrap_or_default()).await)
+            to_val(modscape_manager_lib::plan_payload_impl(st, &arg(a, "pack")?, &arg::<String>(a, "payloadId")?, ch.unwrap_or_default()).await)
         }
         "payload_from_entries" => to_val(
-            modpack_planner_lib::payload::from_entries(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?, &arg::<String>(a, "name")?, &store::now_iso())
-                .and_then(|p| modpack_planner_lib::save_payload_impl(st, p)),
+            modscape_manager_lib::payload::from_entries(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?, &arg::<String>(a, "name")?, &store::now_iso())
+                .and_then(|p| modscape_manager_lib::save_payload_impl(st, p)),
         ),
         "payload_updates" => {
             let all = st.db.all_payloads().map_err(|e| serde_json::to_value(e).unwrap())?.into_iter().map(|p| (p.id.clone(), p)).collect();
-            Ok(serde_json::to_value(modpack_planner_lib::payload::updates_for(&arg(a, "pack")?, &all)).unwrap())
+            Ok(serde_json::to_value(modscape_manager_lib::payload::updates_for(&arg(a, "pack")?, &all)).unwrap())
         }
         "plan_removal" => Ok(serde_json::to_value(model::plan_removal(&arg(a, "pack")?, &arg::<Vec<String>>(a, "keys")?)).unwrap()),
         "entry_versions" => {
@@ -120,9 +120,9 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         "cache_stats" => to_val(st.db.cache_stats()),
         // Never the keychain from a dev tool: the key area is skipped here.
         "reset_data" => {
-            let areas: Vec<modpack_planner_lib::ResetArea> = arg(a, "areas")?;
-            let areas: Vec<_> = areas.into_iter().filter(|x| *x != modpack_planner_lib::ResetArea::CurseforgeKey).collect();
-            to_val(modpack_planner_lib::reset_impl(st, &areas))
+            let areas: Vec<modscape_manager_lib::ResetArea> = arg(a, "areas")?;
+            let areas: Vec<_> = areas.into_iter().filter(|x| *x != modscape_manager_lib::ResetArea::CurseforgeKey).collect();
+            to_val(modscape_manager_lib::reset_impl(st, &areas))
         }
         "remember_link" => to_val(st.db.remember_link(&arg::<String>(a, "modrinthId")?, arg(a, "curseforgeId")?)),
         "forget_link" => to_val(st.db.forget_link(&arg::<String>(a, "modrinthId")?, arg(a, "curseforgeId")?)),
@@ -136,7 +136,7 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         "write_template_file" => to_val(st.templates.write_file(&arg::<String>(a, "id")?, &arg::<String>(a, "path")?, &arg::<String>(a, "text")?, &store::now_iso())),
         "delete_template_file" => to_val(st.templates.delete_file(&arg::<String>(a, "id")?, &arg::<String>(a, "path")?, &store::now_iso())),
         "rename_template_file" => to_val(st.templates.rename_file(&arg::<String>(a, "id")?, &arg::<String>(a, "from")?, &arg::<String>(a, "to")?, &store::now_iso())),
-        "scan_template_source" => to_val(modpack_planner_lib::templates::scan_source(&test_env_path(&arg::<String>(a, "path")?)?)),
+        "scan_template_source" => to_val(modscape_manager_lib::templates::scan_source(&test_env_path(&arg::<String>(a, "path")?)?)),
         "import_template" => {
             let p = std::path::PathBuf::from(arg::<String>(a, "path")?);
             let root = test_env_path("")?;
@@ -147,7 +147,7 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
         }
         "template_overview" => to_val(st.templates.overview(&arg(a, "pack")?, &store::now_iso())),
         "template_applied_ref" => to_val(st.templates.applied_ref(&arg::<String>(a, "id")?)),
-        "template_uses" => to_val(modpack_planner_lib::template_uses_impl(&st.db)),
+        "template_uses" => to_val(modscape_manager_lib::template_uses_impl(&st.db)),
         "pick_template_source" | "add_template_files" | "open_template_path" => Ok(Value::Null),
         "open_external" | "pick_icon" | "export_project" | "import_project" => Ok(Value::Null),
         other => Err(json!({"code": "invalid", "message": format!("dev bridge doesn't support {other}")})),
@@ -170,7 +170,7 @@ fn test_env_path(rel: &str) -> Result<std::path::PathBuf, Value> {
 
 fn main() {
     let st = AppState::new(store::Db::memory()).with_templates(test_env_path("bridge-templates/x").unwrap().parent().unwrap().to_path_buf());
-    modpack_planner_lib::payload::seed_starters(&st.db, &store::now_iso(), false).unwrap();
+    modscape_manager_lib::payload::seed_starters(&st.db, &store::now_iso(), false).unwrap();
     // Never touch the OS keychain from a dev tool: CurseForge stays off here.
     st.curseforge.disable_keychain();
     let server = tiny_http::Server::http("127.0.0.1:1421").expect("bind 127.0.0.1:1421");

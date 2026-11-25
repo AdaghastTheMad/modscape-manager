@@ -1,4 +1,4 @@
-# Building Modpack Planner on Linux
+# Building Modscape Manager on Linux
 
 For **Linux Mint 21 / 22** and **Ubuntu 22.04 / 24.04** (anything apt-based with WebKitGTK 4.1). The result is a `.deb` you install like any other app, plus a portable `.AppImage`.
 
@@ -8,8 +8,8 @@ For **Linux Mint 21 / 22** and **Ubuntu 22.04 / 24.04** (anything apt-based with
 ## The short version
 
 ```bash
-git clone https://github.com/AdaghastTheMad/modpack-planner.git
-cd modpack-planner
+git clone https://github.com/AdaghastTheMad/modscape-manager.git
+cd modscape-manager
 scripts/linux-build.sh
 ```
 
@@ -77,7 +77,7 @@ The first AppImage build has Tauri download its `linuxdeploy` tools into `~/.cac
 sudo apt install ./installers/Modpack\ Planner_0.1.0_amd64.deb
 ```
 
-Modpack Planner then appears in the applications menu under **Accessories / Utility**. To remove it: `sudo apt remove modpack-planner`.
+Modscape Manager then appears in the applications menu under **Accessories / Utility**. To remove it: `sudo apt remove modscape-manager`.
 
 Or skip installing and run the AppImage:
 
@@ -88,7 +88,7 @@ chmod +x installers/*.AppImage
 
 ## Good to know
 
-- **Your data** lives in `~/.local/share/io.github.adaghastthemad.modpackplanner/` (packs, payloads, override templates, cache). **Settings → Danger zone** resets any part of it.
+- **Your data** lives in `~/.local/share/io.github.adaghastthemad.modscapemanager/` (packs, payloads, override templates, cache). **Settings → Danger zone** resets any part of it.
 - **CurseForge key:** saved in the Secret Service keyring (`gnome-keyring`, which Mint's Cinnamon, MATE and Xfce desktops run). If no keyring is running, the app tells you and works with Modrinth only; it never writes the key to a file.
 - **Prism Launcher** (Flatpak or native) imports the exported `.mrpack` / CurseForge zip as usual: *Add Instance → Import*.
 
@@ -101,4 +101,4 @@ chmod +x installers/*.AppImage
 | `failed to bundle project: … linuxdeploy` | Re-run `scripts/build.sh`; if it persists, delete `~/.cache/tauri` and try again. The script already sets `APPIMAGE_EXTRACT_AND_RUN=1` and `NO_STRIP=true`, which fix the usual causes. |
 | `cargo: command not found` after setup | Open a new terminal, or run `. ~/.cargo/env`. |
 | `pnpm: command not found` | `corepack enable pnpm` (with nvm's Node it needs no sudo). |
-| Blank window on start (some NVIDIA setups) | Start it once with `WEBKIT_DISABLE_DMABUF_RENDERER=1 modpack-planner`; if that helps, add the variable to the menu entry. |
+| Blank window on start (some NVIDIA setups) | Start it once with `WEBKIT_DISABLE_DMABUF_RENDERER=1 modscape-manager`; if that helps, add the variable to the menu entry. |

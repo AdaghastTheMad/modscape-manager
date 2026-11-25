@@ -7,7 +7,7 @@ or without builds is reported, never silently dropped.
 """
 import json, re, sys, time, urllib.parse, urllib.request
 
-UA = {"User-Agent": "modpack-planner/starter-resolver"}
+UA = {"User-Agent": "modscape-manager/starter-resolver"}
 API = "https://api.modrinth.com/v2"
 NAMES = [
     "Sodium", "Lithium", "FerriteCore", "ModernFix", "ImmediatelyFast", "Particle Core", "Crash Assistant", "Packed Packs",

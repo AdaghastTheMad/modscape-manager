@@ -2434,7 +2434,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "modpack-planner"
+name = "modscape-manager"
 version = "0.1.0"
 dependencies = [
  "async-trait",
