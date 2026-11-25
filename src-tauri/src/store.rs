@@ -211,6 +211,19 @@ impl Db {
         self.with(|c| c.execute("DELETE FROM payloads WHERE id = ?1", [id]).map(|_| ()))
     }
 
+    // ---- Danger zone resets (Settings): each puts one area back to a fresh install.
+    pub fn reset_packs(&self) -> AppResult<usize> {
+        self.with(|c| c.execute("DELETE FROM packs", []))
+    }
+    pub fn reset_payloads(&self) -> AppResult<usize> {
+        let n = self.with(|c| c.execute("DELETE FROM payloads", []))?;
+        self.with(|c| c.execute("DELETE FROM meta WHERE key = 'starters_seeded'", []))?;
+        Ok(n)
+    }
+    pub fn reset_links(&self) -> AppResult<()> {
+        self.with(|c| c.execute("DELETE FROM meta WHERE key = 'manual_links'", []).map(|_| ()))
+    }
+
     pub fn meta_get(&self, key: &str) -> AppResult<Option<String>> {
         self.with(|c| c.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional())
     }
@@ -296,6 +309,22 @@ mod tests {
         assert_eq!(db.list_packs().unwrap()[0].name, "Renamed");
         db.delete_pack("p1").unwrap();
         assert!(db.get_pack("p1").unwrap().is_none());
+    }
+
+    #[test]
+    fn resets_empty_their_area() {
+        let db = Db::memory();
+        db.put_pack(&crate::model::tests::pack()).unwrap();
+        db.remember_link("a", 1).unwrap();
+        crate::payload::seed_starters(&db, "t", false).unwrap();
+        let starters = db.all_payloads().unwrap().len();
+        assert!(starters > 0);
+        assert_eq!(db.reset_packs().unwrap(), 1);
+        assert!(db.list_packs().unwrap().is_empty());
+        db.reset_links().unwrap();
+        assert!(db.manual_links().unwrap().is_empty());
+        assert_eq!(db.reset_payloads().unwrap(), starters);
+        assert_eq!(crate::payload::seed_starters(&db, "t", false).unwrap(), starters, "starters come back");
     }
 
     #[test]

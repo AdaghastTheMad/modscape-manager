@@ -193,3 +193,5 @@ kbd { display: inline-block; min-width: 1.6em; padding: 0 4px; margin-right: 2px
   background-position: 0 0, 0 0, 0 4px, 0 2px;
 }
 .app-help { margin-bottom: var(--space-2); }
+.danger-zone { border: 2px solid var(--redstone); padding: var(--space-2) var(--space-3); background: #2a1416; }
+.danger-zone > summary { cursor: pointer; color: var(--redstone); font-size: 15px; }

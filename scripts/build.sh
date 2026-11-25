@@ -67,6 +67,12 @@ fi
 step "Building the release ($BUNDLES)"
 # CI=true: the .dmg step skips its Finder window-layout script (which would ask
 # for permission to control Finder) and builds the plain image.
+if [ "$OS" = Linux ]; then
+  # linuxdeploy (the AppImage step) is itself an AppImage: extract-and-run means
+  # no FUSE is needed to build, and skipping strip avoids its failure on the
+  # newer ELF sections Ubuntu 24.04 / Mint 22 produce.
+  export APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true
+fi
 CI=true pnpm tauri build --bundles "$BUNDLES"
 
 step "Collecting installers"

@@ -25,6 +25,12 @@ const listeners = new Set<(p: Prefs) => void>();
 /** Current prefs outside React (e.g. in event handlers). */
 export const getPrefs = read;
 
+/** Danger zone: back to the defaults. */
+export function resetPrefs() {
+  localStorage.removeItem(KEY);
+  listeners.forEach((l) => l(DEFAULTS));
+}
+
 export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]) {
   const next = { ...read(), [k]: v };
   localStorage.setItem(KEY, JSON.stringify(next));

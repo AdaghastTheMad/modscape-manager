@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { playClick } from "../sound";
-import { api, type AppError, type KeyStatus, type Loader, type SearchPage, type Source } from "../api";
-import { Button, Input, Notice, Panel, Select, Slot, SourceBadge, Tooltip } from "../components/kit";
+import { api, type AppError, type KeyStatus, type Loader, type ResetArea, type SearchPage, type Source } from "../api";
+import { Button, Input, Modal, Notice, Panel, Select, Slot, SourceBadge, Tooltip } from "../components/kit";
 import type { CacheStats } from "../api";
-import { setPref, usePrefs } from "../prefs";
+import { resetPrefs, setPref, usePrefs } from "../prefs";
 
 const fmt = new Intl.NumberFormat(undefined, { notation: "compact" });
 
@@ -183,6 +183,75 @@ function CacheSection() {
   );
 }
 
+// ---------------------------------------------------------------- danger zone
+const AREAS: { id: ResetArea | "prefs"; label: string; what: string }[] = [
+  { id: "packs", label: "Packs", what: "every pack, with its snapshots, notes and tags" },
+  { id: "payloads", label: "Payloads", what: "your payloads and edits; the starter payloads come back as shipped" },
+  { id: "templates", label: "Override templates", what: "every template and its files, the trash folder included" },
+  { id: "links", label: "Remembered site links", what: "the Modrinth ↔ CurseForge links you confirmed" },
+  { id: "cache", label: "Cache", what: "saved API answers and icons (they're fetched again as needed)" },
+  { id: "curseforgeKey", label: "CurseForge key", what: "the key in your system keychain (you can add it again)" },
+  { id: "prefs", label: "Interface settings", what: "the toggles on this page, back to their defaults" },
+];
+
+function DangerZone() {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState<"some" | "all" | null>(null);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<AppError | null>(null);
+  const [done, setDone] = useState<string[] | null>(null);
+  const chosen = confirm === "all" ? AREAS : AREAS.filter((a) => picked.has(a.id));
+  const run = async () => {
+    setBusy(true); setError(null);
+    try {
+      const areas = chosen.map((a) => a.id).filter((id): id is ResetArea => id !== "prefs");
+      const lines = areas.length ? await api.resetData(areas) : [];
+      if (chosen.some((a) => a.id === "prefs")) { resetPrefs(); lines.push("Interface settings are back to their defaults."); }
+      setDone(lines); setConfirm(null); setPicked(new Set()); setTyped("");
+    } catch (e) { setError(e as AppError); }
+    finally { setBusy(false); }
+  };
+  return (
+    <details className="danger-zone">
+      <summary className="pixel">Danger zone</summary>
+      <div className="stack" style={{ marginTop: 8 }}>
+        <p className="muted" style={{ margin: 0 }}>Put parts of the app back to how a fresh install has them. These can't be undone, so export anything you want to keep first (packs as planner files, payloads as JSON; template folders are plain files).</p>
+        {AREAS.map((a) => (
+          <label key={a.id} className="mc-check">
+            <input type="checkbox" checked={picked.has(a.id)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(a.id); else n.delete(a.id); setPicked(n); }} />
+            <span><strong>{a.label}</strong> <span className="muted">· {a.what}</span></span>
+          </label>
+        ))}
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <Button variant="danger" disabled={picked.size === 0} onClick={() => setConfirm("some")}>Reset selected ({picked.size})…</Button>
+          <Button variant="danger" onClick={() => { setTyped(""); setConfirm("all"); }}>Factory reset…</Button>
+        </div>
+        {done && (
+          <Notice tone="ok" title="Done">
+            {done.map((l, i) => <div key={i}>{l}</div>)}
+            <div style={{ marginTop: 6 }}><Button size="small" onClick={() => location.reload()}>Reload the app</Button></div>
+          </Notice>
+        )}
+      </div>
+      {confirm && (
+        <Modal title={confirm === "all" ? "Factory reset?" : "Reset these?"} width={520} onClose={() => !busy && setConfirm(null)}>
+          <div className="stack-lg">
+            <p style={{ margin: 0 }}>{confirm === "all" ? "Everything goes back to a fresh install:" : "This permanently resets:"}</p>
+            <ul className="dep-list">{chosen.map((a) => <li key={a.id}><strong>{a.label}</strong>: {a.what}</li>)}</ul>
+            {confirm === "all" && <Input label={'Type RESET to confirm'} value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />}
+            {error && <ErrorNotice error={error} />}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Button onClick={() => setConfirm(null)} disabled={busy}>Cancel</Button>
+              <Button variant="danger" disabled={busy || (confirm === "all" && typed.trim() !== "RESET")} onClick={run}>{busy ? "Resetting…" : confirm === "all" ? "Factory reset" : "Reset"}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </details>
+  );
+}
+
 export function Settings() {
   const [status, setStatus] = useState<KeyStatus | null>(null);
   const [coreError, setCoreError] = useState<AppError | null>(null);
@@ -198,6 +267,7 @@ export function Settings() {
       <ConnectionTest hasKey={!!status?.hasKey} />
       <InterfaceSection />
       <CacheSection />
+      <DangerZone />
       <Panel title="Privacy" inset>
         <p className="muted">No telemetry, analytics or accounts. The only outside calls are to Modrinth, CurseForge and loader version
           metadata, all made by the app's core{ua && <> with the User-Agent <code>{ua}</code></>}.</p>

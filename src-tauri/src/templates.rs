@@ -356,6 +356,15 @@ impl Library {
         self.scan(&copy.id, now)
     }
 
+    /// Danger zone: removes every template, the trash included (permanent).
+    pub fn reset(&self) -> AppResult<usize> {
+        let n = std::fs::read_dir(&self.root).map(|rd| rd.flatten().filter(|e| e.path().join("template.json").is_file()).count()).unwrap_or(0);
+        if self.root.exists() {
+            std::fs::remove_dir_all(&self.root).map_err(io)?;
+        }
+        Ok(n)
+    }
+
     /// Moves the template to `<root>/.trash/` (not a permanent delete).
     pub fn delete(&self, id: &str) -> AppResult<()> {
         let d = self.dir(id)?;

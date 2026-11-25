@@ -118,6 +118,12 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             Ok(serde_json::to_value(resolve::compatible_files_kind(&vs, &mc, loader, kind)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
+        // Never the keychain from a dev tool: the key area is skipped here.
+        "reset_data" => {
+            let areas: Vec<modpack_planner_lib::ResetArea> = arg(a, "areas")?;
+            let areas: Vec<_> = areas.into_iter().filter(|x| *x != modpack_planner_lib::ResetArea::CurseforgeKey).collect();
+            to_val(modpack_planner_lib::reset_impl(st, &areas))
+        }
         "remember_link" => to_val(st.db.remember_link(&arg::<String>(a, "modrinthId")?, arg(a, "curseforgeId")?)),
         "forget_link" => to_val(st.db.forget_link(&arg::<String>(a, "modrinthId")?, arg(a, "curseforgeId")?)),
         // Override templates (library lives in test-env/bridge-templates; source paths are relative to test-env/).

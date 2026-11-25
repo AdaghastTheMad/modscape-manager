@@ -780,6 +780,58 @@ pub fn template_uses_impl(db: &Db) -> AppResult<std::collections::BTreeMap<Strin
     Ok(out)
 }
 
+// ---------------- danger zone ----------------
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResetArea {
+    Packs,
+    Payloads,
+    Templates,
+    Links,
+    Cache,
+    CurseforgeKey,
+}
+
+/// Puts the chosen areas back to how a fresh install has them. Payloads come
+/// back as the starter set; everything else is emptied. Preferences live in the
+/// webview and are reset there. Returns one line per area for the UI.
+pub fn reset_impl(st: &AppState, areas: &[ResetArea]) -> AppResult<Vec<String>> {
+    let mut out = Vec::new();
+    for a in areas {
+        match a {
+            ResetArea::Packs => out.push(format!("Deleted {} pack(s).", st.db.reset_packs()?)),
+            ResetArea::Payloads => {
+                let n = st.db.reset_payloads()?;
+                let s = payload::seed_starters(&st.db, &store::now_iso(), false)?;
+                out.push(format!("Removed {n} payload(s) and restored the {s} starters."));
+            }
+            ResetArea::Templates => out.push(format!("Deleted {} template(s).", st.templates.reset()?)),
+            ResetArea::Links => {
+                st.db.reset_links()?;
+                out.push("Forgot every cross-site link you made.".into());
+            }
+            ResetArea::Cache => {
+                st.db.cache_clear()?;
+                out.push("Cleared the cache.".into());
+            }
+            ResetArea::CurseforgeKey => {
+                st.curseforge.forget_key();
+                // Never fatal: a factory reset still does everything else if the keychain is unreachable.
+                match keychain::clear_key() {
+                    Ok(()) => out.push("Removed the CurseForge key from the keychain.".into()),
+                    Err(e) => out.push(format!("Couldn't reach the keychain to remove the CurseForge key: {e}")),
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+async fn reset_data(state: St<'_>, areas: Vec<ResetArea>) -> AppResult<Vec<String>> {
+    reset_impl(&state, &areas)
+}
+
 // ---------------- misc ----------------
 #[tauri::command]
 fn cache_stats(state: St<'_>) -> AppResult<store::CacheStats> {
@@ -859,6 +911,7 @@ pub fn run() {
             cache_stats,
             clear_cache,
             open_external,
+            reset_data,
             list_templates,
             create_template,
             set_template_meta,
