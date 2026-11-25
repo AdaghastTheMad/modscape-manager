@@ -101,6 +101,8 @@ pub struct ExportPlan {
     pub can_export: bool,
     /// Files override templates put in `overrides/` (filled in by `add_overrides`).
     pub overrides: usize,
+    /// Planned for a hosted server.
+    pub server: bool,
 }
 
 fn loader_name(l: Loader) -> &'static str {
@@ -177,9 +179,61 @@ fn host_ok(url: &str) -> bool {
     reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| MRPACK_HOSTS.contains(&h))).unwrap_or(false) && url.starts_with("https://")
 }
 
+/// Export switches beyond the format.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ExportOptions {
+    /// For a hosted server (M13): client-only mods, resource packs and shaders
+    /// (and dependencies only they needed) are left out.
+    pub server: bool,
+}
+
+/// What a server export leaves out, by entry key, with the reason. A mod is
+/// client-only when Modrinth says it can't run on a server; resource packs and
+/// shaders always are. A dependency stays if anything kept still needs it.
+pub fn server_exclusions(pack: &Pack) -> std::collections::BTreeMap<String, String> {
+    use crate::model::Reason;
+    let client_only = |e: &crate::model::PackEntry| matches!(e.kind, EntryKind::Resourcepack | EntryKind::Shader) || e.display.server_side.as_deref() == Some("unsupported");
+    let mut kept: std::collections::HashSet<&String> = pack.entries.iter().filter(|(_, e)| e.reason != Reason::Dependency && !client_only(e)).map(|(k, _)| k).collect();
+    loop {
+        let more: Vec<&String> = pack
+            .entries
+            .iter()
+            .filter(|(k, e)| e.reason == Reason::Dependency && !kept.contains(k) && !client_only(e))
+            .filter(|(_, e)| e.pulled_in_by.is_empty() || e.pulled_in_by.iter().any(|p| kept.contains(p)))
+            .map(|(k, _)| k)
+            .collect();
+        if more.is_empty() {
+            break;
+        }
+        kept.extend(more);
+    }
+    pack.entries
+        .iter()
+        .filter(|(k, _)| !kept.contains(k))
+        .map(|(k, e)| {
+            let why = match e.kind {
+                EntryKind::Resourcepack => "Resource pack: client-side, not needed on a server.".to_string(),
+                EntryKind::Shader => "Shader: client-side, not needed on a server.".to_string(),
+                _ if e.display.server_side.as_deref() == Some("unsupported") => "Client-only: Modrinth says it doesn't run on a server.".to_string(),
+                _ => {
+                    let by: Vec<String> = e.pulled_in_by.iter().filter_map(|p| pack.entries.get(p)).map(|p| p.display.name.clone()).collect();
+                    format!("Only needed by client-side mods ({}).", by.join(", "))
+                }
+            };
+            (k.clone(), why)
+        })
+        .collect()
+}
+
 /// Builds the pre-flight plan. Picks files exactly like the checks do (pins,
 /// channel policy), so what you export is what you've been looking at.
 pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> ExportPlan {
+    plan_export_with(pack, cat, format, ExportOptions::default()).await
+}
+
+pub async fn plan_export_with(pack: &Pack, cat: &dyn Catalog, format: Format, opts: ExportOptions) -> ExportPlan {
+    let server_out = if opts.server { server_exclusions(pack) } else { Default::default() };
     let mc = pack.mc_version.as_str();
     let loader = pack.loader;
     let want = match format {
@@ -194,6 +248,10 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
 
     let mut todo = Vec::new();
     for (k, e) in &pack.entries {
+        if let Some(why) = server_out.get(k) {
+            excluded.push(Excluded { key: k.clone(), name: e.display.name.clone(), reason: why.clone() });
+            continue;
+        }
         let has_want = match want {
             Source::Modrinth => e.mod_ref.modrinth_id.is_some(),
             Source::Curseforge => e.mod_ref.curseforge_id.is_some(),
@@ -268,7 +326,8 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
             excluded.push(Excluded { key: k, name, reason: "The site gave no hash for this file, which packwiz needs.".into() });
             continue;
         }
-        let env = Some(export_env(e.display.server_side.as_deref()));
+        // A server export only holds what the server runs.
+        let env = Some(if opts.server { Env { client: "required".into(), server: "required".into() } } else { export_env(e.display.server_side.as_deref()) });
         files.push(ExportFile {
             key: k,
             name,
@@ -379,7 +438,35 @@ pub async fn plan_export(pack: &Pack, cat: &dyn Catalog, format: Format) -> Expo
         Format::Packwiz => format!("{} {}", packwiz_loader_key(loader), plain_loader_version(pack)),
         _ => format!("{} {}", mrpack_loader_key(loader), plain_loader_version(pack)),
     };
-    ExportPlan { format, files, excluded, problems, loader_label, can_export, overrides: 0 }
+    if opts.server {
+        let unknown: Vec<String> = files.iter().filter(|f| f.kind == EntryKind::Mod && pack.entries.get(&f.key).is_some_and(|e| e.display.server_side.is_none())).map(|f| f.name.clone()).collect();
+        if !unknown.is_empty() {
+            problems.push(Problem {
+                severity: Severity::Warning,
+                message: format!(
+                    "{} mod{} {} no client/server information (CurseForge doesn't list it), so {} kept. Check {} on a server: {}.",
+                    unknown.len(),
+                    if unknown.len() == 1 { "" } else { "s" },
+                    if unknown.len() == 1 { "has" } else { "have" },
+                    if unknown.len() == 1 { "it's" } else { "they're" },
+                    if unknown.len() == 1 { "it runs" } else { "they run" },
+                    unknown.join(", ")
+                ),
+                fixes: vec![],
+                fix_label: None,
+            });
+        }
+        if !server_out.is_empty() {
+            problems.push(Problem {
+                severity: Severity::Info,
+                message: format!("For a hosted server: left out {} client-side file{} (listed under \"not included\").", server_out.len(), if server_out.len() == 1 { "" } else { "s" }),
+                fixes: vec![],
+                fix_label: None,
+            });
+        }
+        problems.sort_by(|a, b| a.severity.cmp(&b.severity));
+    }
+    ExportPlan { format, files, excluded, problems, loader_label, can_export, overrides: 0, server: opts.server }
 }
 
 fn version_label(pack: &Pack) -> String {
@@ -787,6 +874,36 @@ mod tests {
         block(add(f, &mut pack, "sodium-extra", &mut keys));
         block(add(f, &mut pack, "modmenu", &mut keys));
         pack
+    }
+
+    #[test]
+    fn server_exports_leave_client_side_things_out() {
+        use crate::model::{tests::entry, Reason};
+        let mut pack = pack_for("1.21.1", Loader::Fabric);
+        let mut add = |k: &str, name: &str, server: Option<&str>, reason: Reason, kind: EntryKind, by: &[&str]| {
+            let mut e = entry(Some(k), None, name, "t");
+            e.display.server_side = server.map(String::from);
+            e.reason = reason;
+            e.kind = kind;
+            e.pulled_in_by = by.iter().map(|s| s.to_string()).collect();
+            pack.entries.insert(k.into(), e);
+        };
+        add("sodium", "Sodium", Some("unsupported"), Reason::User, EntryKind::Mod, &[]);
+        add("lithium", "Lithium", Some("optional"), Reason::User, EntryKind::Mod, &[]);
+        add("menu", "Mod Menu", Some("unsupported"), Reason::User, EntryKind::Mod, &[]);
+        add("clothlib", "Cloth Config", Some("optional"), Reason::Dependency, EntryKind::Mod, &["menu"]);
+        add("fapi", "Fabric API", Some("optional"), Reason::Dependency, EntryKind::Mod, &["menu", "lithium"]);
+        add("fa", "Fresh Animations", Some("unsupported"), Reason::User, EntryKind::Resourcepack, &[]);
+        add("terra", "Terralith", Some("required"), Reason::User, EntryKind::Datapack, &[]);
+        let out = server_exclusions(&pack);
+        let mut left: Vec<&str> = out.keys().map(|k| k.as_str()).collect();
+        left.sort();
+        assert_eq!(left, vec!["clothlib", "fa", "menu", "sodium"], "{out:?}");
+        assert!(out["clothlib"].contains("Mod Menu"), "says who needed it");
+        // Override files a server never reads.
+        for (p, client) in [("options.txt", true), ("servers.dat", true), ("config/jei/jei-client.toml", true), ("config/create-common.toml", false), ("kubejs/server_scripts/a.js", false), ("shaderpacks/x.txt", true)] {
+            assert_eq!(crate::templates::is_client_only_file(p), client, "{p}");
+        }
     }
 
     #[test]

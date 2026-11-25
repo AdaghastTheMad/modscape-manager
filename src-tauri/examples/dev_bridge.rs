@@ -73,13 +73,17 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let force_pin = a.get("forcePin").and_then(Value::as_bool).unwrap_or(false);
             to_val(resolve::plan_add_kind(&pack, &arg::<String>(a, "projectId")?, kind.unwrap_or_default(), pin.as_deref(), force_pin, for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
         }
-        "export_plan" => Ok(serde_json::to_value(st.export_plan(&arg(a, "pack")?, arg(a, "format")?).await).unwrap()),
+        "export_plan" => {
+            let opts: modscape_manager_lib::export::ExportOptions = a.get("options").and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default();
+            Ok(serde_json::to_value(st.export_plan_with(&arg(a, "pack")?, arg(a, "format")?, opts).await).unwrap())
+        }
         // Dev only: write an export / import a file at a path inside test-env/.
         "dev_export_to" => {
             let pack: model::Pack = arg(a, "pack")?;
             let path = test_env_path(&arg::<String>(a, "path")?)?;
-            let plan = st.export_plan(&pack, arg(a, "format")?).await;
-            let overrides = st.templates.export_files(&pack).map_err(|e| serde_json::to_value(e).unwrap())?;
+            let opts: modscape_manager_lib::export::ExportOptions = a.get("options").and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default();
+            let plan = st.export_plan_with(&pack, arg(a, "format")?, opts).await;
+            let overrides = st.templates.export_files_for(&pack, opts.server).map_err(|e| serde_json::to_value(e).unwrap())?;
             use modscape_manager_lib::export::{self, Format};
             let fmt: Format = arg(a, "format")?;
             let r = match fmt {

@@ -108,7 +108,8 @@ export type ExportFormat = "mrpack" | "curseforgeZip" | "packwiz" | "markdown" |
 export interface ExportFile { key: string; name: string; source: Source; kind: EntryKindT; path: string; projectId: string; fileId: string; versionNumber: string; url: string; size: number; distributionBlocked: boolean }
 export interface Excluded { key: string; name: string; reason: string }
 export interface ExportProblem { severity: Severity; message: string; fixes: Fix[]; fixLabel?: string | null }
-export interface ExportPlan { format: ExportFormat; files: ExportFile[]; excluded: Excluded[]; problems: ExportProblem[]; loaderLabel: string; canExport: boolean; overrides: number }
+export interface ExportPlan { format: ExportFormat; files: ExportFile[]; excluded: Excluded[]; problems: ExportProblem[]; loaderLabel: string; canExport: boolean; overrides: number; server: boolean }
+export interface ExportOptions { server?: boolean }
 
 // ---------- override templates (M9) ----------
 export interface TemplateFile { path: string; size: number; editable: boolean; modHint: string | null }
@@ -220,8 +221,8 @@ export const api = {
   payloadUpdates: (pack: Pack) => call<PayloadUpdate[]>("payload_updates", { pack }),
   exportPayload: (id: string) => call<string | null>("export_payload", { id }),
   importPayload: () => call<SavedPayload | null>("import_payload"),
-  exportPlan: (pack: Pack, format: ExportFormat) => call<ExportPlan>("export_plan", { pack, format }),
-  exportPack: (pack: Pack, format: ExportFormat) => call<string | null>("export_pack", { pack, format }),
+  exportPlan: (pack: Pack, format: ExportFormat, options: ExportOptions = {}) => call<ExportPlan>("export_plan", { pack, format, options }),
+  exportPack: (pack: Pack, format: ExportFormat, options: ExportOptions = {}) => call<string | null>("export_pack", { pack, format, options }),
   importPackFile: () => call<ImportReport | null>("import_pack_file"),
   importPrismInstance: () => call<ImportReport | null>("import_prism_instance"),
   cacheStats: () => call<CacheStats>("cache_stats"),

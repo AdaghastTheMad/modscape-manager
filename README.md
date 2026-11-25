@@ -134,7 +134,7 @@ Three panes: **Browse** on the left, **the pack** in the middle (as a list, a gr
 | # | | |
 |:-:|---|---|
 | 1 | **Format** | `.mrpack`, CurseForge zip, packwiz, Markdown list, CSV list, or the planner project file. |
-| 2 | **Pre-flight** | Ready or not, how many files, the loader, and roughly how much the launcher will download. |
+| 2 | **Pre-flight** | Ready or not, how many files, the loader, and roughly how much the launcher will download. Tick **For a hosted server** above it to leave out client-only mods (as Modrinth marks them), resource packs, shaders, dependencies only those needed, and client-only override files; the export is named "… (server)". |
 | 3 | **Problems** | Mods set to the other site (with a *Switch all* fix), distribution-blocked files, template notes. Errors block the export; warnings don't. |
 | 4 | **Included / not included** | Every file and where it goes (`mods/`, `resourcepacks/`, `shaderpacks/`, `config/paxi/datapacks/`). |
 
@@ -211,6 +211,8 @@ macOS uses ⌘, Linux uses Ctrl. Backspace or Delete removes the selected mod.
 | **packwiz** | Both sites mixed (one `.pw.toml` per file), overrides at the root | packwiz-installer, git-based packs |
 | **Markdown / CSV** | A readable list: name, type, version, site, link, category | Pack pages, spreadsheets |
 | **Planner project** | Everything (`.json`) | Backups, sharing, git |
+
+Every format except the project file also has a **hosted server** variant. Mods CurseForge has no side information for are kept, and listed so you can check them.
 
 Datapacks go to Paxi's global folder (`config/paxi/datapacks/`) in `.mrpack` and packwiz exports. In CurseForge zips the launcher chooses: Prism puts them in `datapacks/`, which Paxi 5.1.3+ also loads.
 

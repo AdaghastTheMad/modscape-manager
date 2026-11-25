@@ -157,6 +157,21 @@ pub fn mod_hint(path: &str) -> Option<String> {
     Some(name)
 }
 
+/// Override files a dedicated server never reads: the client's own settings
+/// (`options*.txt`, `servers.dat`), resource/shader packs, and configs named
+/// for the client (`jei-client.toml`, `sodium-client.json`…).
+pub fn is_client_only_file(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    let name = p.rsplit('/').next().unwrap_or(&p);
+    if !p.contains('/') && (name.starts_with("options") && name.ends_with(".txt") || name == "servers.dat") {
+        return true;
+    }
+    if p.starts_with("resourcepacks/") || p.starts_with("shaderpacks/") {
+        return true;
+    }
+    (p.starts_with("config/") || p.starts_with("defaultconfigs/")) && name.contains("client")
+}
+
 pub fn norm(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase()
 }
@@ -771,6 +786,12 @@ impl Library {
             }
         }
         Ok(Overview { attached, missing, merged: merged.into_values().collect(), clashes, updates, mods: mods.into_values().collect() })
+    }
+
+    /// `export_files` for a server export: client-only files left out.
+    pub fn export_files_for(&self, pack: &Pack, server: bool) -> AppResult<Vec<(String, PathBuf)>> {
+        let all = self.export_files(pack)?;
+        Ok(if server { all.into_iter().filter(|(p, _)| !is_client_only_file(p)).collect() } else { all })
     }
 
     /// Files for `overrides/`, winners only: (relative path, file on disk).

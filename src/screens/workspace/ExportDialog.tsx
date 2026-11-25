@@ -14,7 +14,7 @@ const FORMAT_INFO: Record<ExportFormat, string> = {
   csv: "A spreadsheet-friendly list: name, type, version, site, link, category, and why it's in the pack.",
 };
 const DONE_HINT: Partial<Record<ExportFormat, string>> = {
-  mrpack: "In Prism: Add Instance → Import → pick this file.",
+  mrpack: "In Prism: Add Instance → Import → pick this file. For a server: upload it to your host's modpack installer, or use a tool like mrpack-install.",
   curseforgeZip: "In Prism: Add Instance → Import → pick this file.",
   packwiz: "Serve or commit this folder; packwiz-installer reads pack.toml.",
 };
@@ -28,21 +28,23 @@ export function ExportDialog({ pack, onClose, onFixes, onSaveProject }: {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [showFiles, setShowFiles] = useState(false);
+  // For a hosted server (M13): leave out client-only mods, resource packs and shaders.
+  const [server, setServer] = useState(false);
 
   // Re-plan whenever the format or the pack changes (fixes update the pack).
-  const sig = JSON.stringify([tab, pack.loaderVersion, pack.channelPolicy, Object.entries(pack.entries).map(([k, e]) => [k, e.ref, e.fileId])]);
+  const sig = JSON.stringify([tab, server, pack.loaderVersion, pack.channelPolicy, Object.entries(pack.entries).map(([k, e]) => [k, e.ref, e.fileId])]);
   useEffect(() => {
     if (tab === "project") return;
     let live = true;
     setPlan(null); setError(null); setDone(null);
-    api.exportPlan(pack, tab).then((p) => live && setPlan(p), (e) => live && setError(e));
+    api.exportPlan(pack, tab, { server }).then((p) => live && setPlan(p), (e) => live && setError(e));
     return () => { live = false; };
   }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doExport = async () => {
     if (tab === "project") return;
     setBusy(true); setError(null);
-    try { const path = await api.exportPack(pack, tab); if (path) setDone(path); }
+    try { const path = await api.exportPack(pack, tab, { server }); if (path) setDone(path); }
     catch (e) { setError(e as AppError); }
     finally { setBusy(false); }
   };
@@ -63,6 +65,10 @@ export function ExportDialog({ pack, onClose, onFixes, onSaveProject }: {
         ) : (
           <div className="stack">
             <p className="muted">{FORMAT_INFO[tab]}{tab === "markdown" || tab === "csv" ? "" : " The launcher downloads the files when it installs the pack; nothing is downloaded here."}</p>
+            <label className="mc-check" title="Leaves out mods Modrinth marks as client-only, resource packs, shaders, dependencies only those needed, and client-only override files (options.txt, *-client configs)">
+              <input type="checkbox" checked={server} onChange={(e) => setServer(e.target.checked)} />
+              <span><strong>For a hosted server</strong> <span className="muted">· leave out client-only mods, resource packs and shaders (the file is named “… (server)”)</span></span>
+            </label>
             {error && <ErrorNotice error={error} />}
             {!plan && !error && <p className="muted">Checking every mod's file…</p>}
             {plan && (

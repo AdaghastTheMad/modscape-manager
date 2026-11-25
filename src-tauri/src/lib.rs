@@ -100,8 +100,26 @@ impl AppState {
 
     /// Export pre-flight including override templates.
     pub async fn export_plan(&self, pack: &Pack, format: export::Format) -> export::ExportPlan {
-        let mut plan = export::plan_export(pack, &self.catalog(), format).await;
+        self.export_plan_with(pack, format, export::ExportOptions::default()).await
+    }
+
+    pub async fn export_plan_with(&self, pack: &Pack, format: export::Format, opts: export::ExportOptions) -> export::ExportPlan {
+        let mut plan = export::plan_export_with(pack, &self.catalog(), format, opts).await;
         export::add_overrides(&mut plan, pack, &self.templates, &store::now_iso());
+        if opts.server {
+            if let Ok(all) = self.templates.export_files(pack) {
+                let dropped: Vec<String> = all.into_iter().map(|(p, _)| p).filter(|p| templates::is_client_only_file(p)).collect();
+                if !dropped.is_empty() {
+                    plan.overrides = plan.overrides.saturating_sub(dropped.len());
+                    plan.problems.push(export::Problem {
+                        severity: resolve::Severity::Info,
+                        message: format!("Left out {} client-only override file{}: {}.", dropped.len(), if dropped.len() == 1 { "" } else { "s" }, dropped.join(", ")),
+                        fixes: vec![],
+                        fix_label: None,
+                    });
+                }
+            }
+        }
         plan
     }
 
@@ -496,18 +514,24 @@ async fn plan_port(state: St<'_>, pack: Pack, target: port::PortTarget) -> AppRe
 
 // ---------------- export / import ----------------
 #[tauri::command]
-async fn export_plan(state: St<'_>, pack: Pack, format: export::Format) -> AppResult<export::ExportPlan> {
-    Ok(state.export_plan(&pack, format).await)
+async fn export_plan(state: St<'_>, pack: Pack, format: export::Format, options: Option<export::ExportOptions>) -> AppResult<export::ExportPlan> {
+    Ok(state.export_plan_with(&pack, format, options.unwrap_or_default()).await)
 }
 
 /// Re-plans (so the file matches the pack right now), asks where to save, writes.
 #[tauri::command]
-async fn export_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack, format: export::Format) -> AppResult<Option<String>> {
-    let plan = state.export_plan(&pack, format).await;
+async fn export_pack(app: tauri::AppHandle, state: St<'_>, pack: Pack, format: export::Format, options: Option<export::ExportOptions>) -> AppResult<Option<String>> {
+    let opts = options.unwrap_or_default();
+    let plan = state.export_plan_with(&pack, format, opts).await;
+    // A server export is named so it can't be mistaken for the client pack.
+    let mut pack = pack;
+    if opts.server {
+        pack.name = format!("{} (server)", pack.name.trim());
+    }
     if !plan.can_export {
         return Err(AppError::Invalid("Fix the errors in the pre-flight check before exporting.".into()));
     }
-    let overrides = state.templates.export_files(&pack)?;
+    let overrides = state.templates.export_files_for(&pack, opts.server)?;
     if format == export::Format::Packwiz {
         // A new folder named after the pack, inside the folder you pick.
         let Some(fp) = app.dialog().file().set_title("Choose where to create the packwiz folder").blocking_pick_folder() else { return Ok(None) };
