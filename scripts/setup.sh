@@ -149,3 +149,5 @@ echo
 if [ "$MISSING" -eq 0 ]; then echo "All good — run scripts/dev.sh to start the app."
 elif [ "$INSTALLED" -gt 0 ]; then echo "Installed $INSTALLED item(s). Re-run this script to confirm everything is in place."
 else echo "$MISSING item(s) missing. Re-run without --check to install them."; fi
+# --check reports through the exit code too (scripts/build.sh relies on it).
+if [ "$MODE" = check ] && [ "$MISSING" -gt 0 ]; then exit 1; fi

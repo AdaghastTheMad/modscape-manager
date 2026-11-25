@@ -7,3 +7,4 @@ test-env/
 *.log
 .claude/settings.local.json
 *.tsbuildinfo
+installers/
