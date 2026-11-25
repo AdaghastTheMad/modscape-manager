@@ -686,7 +686,7 @@
     {
       "id": "starter-distant",
       "name": "Distant Terrain",
-      "description": "Far-away terrain as level-of-detail chunks: Distant Horizons, or Voxy (on NeoForge 1.21.1 through Roxy, with the exact Voxy file Roxy needs).",
+      "description": "Far-away terrain as level-of-detail chunks: Distant Horizons, Voxy, or Voxy on NeoForge 1.21.1 through Roxy (with the exact Voxy file Roxy needs).",
       "items": [
         {
           "kind": "choice",
@@ -712,11 +712,28 @@
             },
             {
               "id": "distant-voxy",
-              "label": "Voxy (Roxy on NeoForge 1.21.1)",
+              "label": "Voxy",
+              "slots": [
+                {
+                  "id": "distant-voxy-plain",
+                  "label": "Voxy",
+                  "candidates": [
+                    {
+                      "name": "voxy",
+                      "modrinthId": "fxxUqruK",
+                      "iconUrl": "https://cdn.modrinth.com/data/fxxUqruK/2a4159b1ff6ecba43bf895d6abee6f724a0e03c0_96.webp"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "distant-voxy-roxy",
+              "label": "Voxy + Roxy (NeoForge 1.21.1)",
               "slots": [
                 {
                   "id": "distant-voxy-file",
-                  "label": "Voxy (0.2.16-beta for Roxy on NeoForge 1.21.1)",
+                  "label": "Voxy 0.2.16-beta (the file Roxy needs)",
                   "candidates": [
                     {
                       "name": "voxy",
@@ -731,15 +748,6 @@
                       "pinVersion": "H3w2nVdU",
                       "pinNumber": "0.2.16-beta",
                       "forcePin": true
-                    },
-                    {
-                      "name": "voxy",
-                      "modrinthId": "fxxUqruK",
-                      "iconUrl": "https://cdn.modrinth.com/data/fxxUqruK/2a4159b1ff6ecba43bf895d6abee6f724a0e03c0_96.webp",
-                      "loaders": [
-                        "fabric",
-                        "quilt"
-                      ]
                     }
                   ]
                 },
