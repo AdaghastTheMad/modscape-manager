@@ -137,14 +137,21 @@ export interface PortPlan { pack: Pack; report: PortReport }
 
 // ---- payloads ----
 export type EntryKindT = "mod" | "resourcepack" | "shader" | "datapack";
-export interface PCandidate { name: string; modrinthId?: string; curseforgeId?: number; iconUrl?: string; loaders?: Loader[]; mcVersions?: string[]; kind?: EntryKindT }
+export interface PCandidate {
+  name: string; modrinthId?: string; curseforgeId?: number; iconUrl?: string; loaders?: Loader[]; mcVersions?: string[]; kind?: EntryKindT;
+  /** Exactly this file (Modrinth version id / CurseForge file id), and its version number for display. */
+  pinVersion?: string; pinNumber?: string;
+  /** Use the pinned file even if it isn't built for the pack (another mod needs exactly it). */
+  forcePin?: boolean;
+}
+export interface AnyVersion { versionId: string; versionNumber: string; versionType: string; gameVersions: string[]; loaders: string[]; date: string }
 export interface PSlot { id: string; label: string; candidates: PCandidate[] }
 export interface PChoiceOption { id: string; label: string; slots: PSlot[] }
 export type PItem = ({ kind: "mod" } & PSlot) | { kind: "choice"; id: string; label: string; options: PChoiceOption[]; common: PSlot[] };
 export interface Payload { id: string; name: string; description: string; items: PItem[]; includes: string[]; version: number; starter: boolean; createdAt: string; updatedAt: string; [extra: string]: unknown }
 export type SlotStatus =
   | { status: "inPack"; key: string; name: string }
-  | { status: "add"; projectId: string; altId?: string | null; name: string; iconUrl?: string | null; fallback: boolean; kind: EntryKindT }
+  | { status: "add"; projectId: string; altId?: string | null; name: string; iconUrl?: string | null; fallback: boolean; kind: EntryKindT; pinVersion?: string; pinNumber?: string; forcePin?: boolean }
   | { status: "noBuild"; tried: string[] }
 
 export type PlanRow = { slotId: string; from: string; choice?: string | null; label: string } & SlotStatus;
@@ -191,8 +198,9 @@ export const api = {
   analyzePack: (pack: Pack, force = false) => call<Analysis>("analyze_pack", { pack, force }),
   /** forKey: add it as a dependency of that entry instead of as the user's own pick. */
   /** projectId: Modrinth id, or "cf:<id>" for CurseForge. altId: the same mod on the other site. */
-  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null, altId?: string | null, kind?: EntryKindT) =>
-    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, altId: altId ?? null, addedAt: new Date().toISOString(), kind: kind ?? "mod" }),
+  planAdd: (pack: Pack, projectId: string, pinVersion?: string | null, forKey?: string | null, altId?: string | null, kind?: EntryKindT, forcePin = false) =>
+    call<AddPlan>("plan_add", { pack, projectId, pinVersion: pinVersion ?? null, forKey: forKey ?? null, altId: altId ?? null, addedAt: new Date().toISOString(), kind: kind ?? "mod", forcePin }),
+  allVersions: (projectId: string) => call<AnyVersion[]>("all_versions", { projectId }),
   searchAll: (query: SearchQuery, sources: Source[], prefer: Source, mrOffset = 0, cfOffset = 0) =>
     call<MergedPage>("search_all", { query, sources, prefer, mrOffset, cfOffset }),
   findMatches: (pack: Pack, key: string) => call<Candidate[]>("find_matches", { pack, key }),

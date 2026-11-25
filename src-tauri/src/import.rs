@@ -101,6 +101,7 @@ async fn finish(mut pack: Pack, found: Vec<Found>, cat: &dyn Catalog, notes: &mu
             PackEntry {
                 mod_ref: resolve::mod_ref_for(&f.project, None),
                 file_id: Some(f.file.strip_prefix(curseforge::PREFIX).unwrap_or(&f.file).to_string()),
+                pin_forced: false,
                 // CurseForge says what a project is; otherwise the folder it was in does.
                 kind: infos.get(&f.project).and_then(|p| p.kind).unwrap_or(f.kind),
                 reason: Reason::User,

@@ -70,7 +70,8 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             let for_key: Option<String> = arg(a, "forKey")?;
             let alt: Option<String> = arg(a, "altId")?;
             let kind: Option<model::EntryKind> = a.get("kind").and_then(|k| serde_json::from_value(k.clone()).ok());
-            to_val(resolve::plan_add_kind(&pack, &arg::<String>(a, "projectId")?, kind.unwrap_or_default(), pin.as_deref(), for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
+            let force_pin = a.get("forcePin").and_then(Value::as_bool).unwrap_or(false);
+            to_val(resolve::plan_add_kind(&pack, &arg::<String>(a, "projectId")?, kind.unwrap_or_default(), pin.as_deref(), force_pin, for_key.as_deref(), alt.as_deref(), &st.catalog(), false, &arg::<String>(a, "addedAt")?, || uuid::Uuid::new_v4().to_string()).await)
         }
         "export_plan" => Ok(serde_json::to_value(st.export_plan(&arg(a, "pack")?, arg(a, "format")?).await).unwrap()),
         // Dev only: write an export / import a file at a path inside test-env/.
@@ -118,6 +119,7 @@ async fn dispatch(st: &AppState, cmd: &str, a: &Value) -> Result<Value, Value> {
             Ok(serde_json::to_value(resolve::compatible_files_kind(&vs, &mc, loader, kind)).unwrap())
         }
         "cache_stats" => to_val(st.db.cache_stats()),
+        "all_versions" => to_val(modscape_manager_lib::all_versions_impl(st, &arg::<String>(a, "projectId")?).await),
         // Never the keychain from a dev tool: the key area is skipped here.
         "reset_data" => {
             let areas: Vec<modscape_manager_lib::ResetArea> = arg(a, "areas")?;

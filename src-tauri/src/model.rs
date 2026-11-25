@@ -102,6 +102,11 @@ pub struct PackEntry {
     pub mod_ref: ModRef,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_id: Option<String>,
+    /// The pin is on purpose even though the file isn't built for the pack's
+    /// version/loader (e.g. Roxy needs Voxy's 1.21.11 Fabric file on NeoForge
+    /// 1.21.1). The checks then don't flag it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pin_forced: bool,
     #[serde(default)]
     pub kind: EntryKind,
     #[serde(default)]
@@ -357,6 +362,7 @@ pub mod tests {
         PackEntry {
             mod_ref: ModRef { modrinth_id: mr.map(String::from), curseforge_id: cf, preferred: Source::Modrinth },
             file_id: None,
+            pin_forced: false,
             kind: EntryKind::Mod,
             reason: Reason::User,
             pulled_in_by: vec![],

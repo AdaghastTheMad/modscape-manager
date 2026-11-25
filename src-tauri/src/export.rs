@@ -797,7 +797,7 @@ mod tests {
         pack.loader_version = "0.20.1".into();
         let mut keys = counter();
         for (pid, kind) in [("rpFresh", EntryKind::Resourcepack), ("shComp", EntryKind::Shader), ("dpTerra", EntryKind::Datapack)] {
-            let plan = block(plan_add_kind(&pack, pid, kind, None, None, None, &c, false, "t", &mut keys)).unwrap();
+            let plan = block(plan_add_kind(&pack, pid, kind, None, false, None, None, &c, false, "t", &mut keys)).unwrap();
             apply(&mut pack, plan);
         }
         let plan = block(plan_export(&pack, &c, Format::Mrpack));
@@ -818,7 +818,7 @@ mod tests {
         pack.loader_version = "0.20.1".into();
         let mut keys = counter();
         for (pid, kind) in [("rpFresh", EntryKind::Resourcepack), ("dpTerra", EntryKind::Datapack)] {
-            let plan = block(plan_add_kind(&pack, pid, kind, None, None, None, &c, false, "t", &mut keys)).unwrap();
+            let plan = block(plan_add_kind(&pack, pid, kind, None, false, None, None, &c, false, "t", &mut keys)).unwrap();
             apply(&mut pack, plan);
         }
         let plan = block(plan_export(&pack, &c, Format::Packwiz));

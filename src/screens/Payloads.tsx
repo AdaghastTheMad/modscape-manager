@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { unsaved, useUnsavedGuard } from "../unsaved";
-import { api, type AppError, type EntryKindT, type Loader, type Payload, type PCandidate, type PChoiceOption, type PItem, type PSlot, type SearchHit } from "../api";
+import { api, type AnyVersion, type AppError, type EntryKindT, type Loader, type Payload, type PCandidate, type PChoiceOption, type PItem, type PSlot, type SearchHit } from "../api";
 import { Button, ErrorNotice, Input, ModIcon, Modal, Notice, Panel, Select, SourceBadge } from "../components/kit";
 import { fmtCompact, useDebounced } from "../hooks";
 import { candidateFromHit, KINDS, LOADERS, nowIso } from "../model";
@@ -81,6 +81,49 @@ function MoveButtons({ onMove, first, last, what }: Mover) {
   );
 }
 
+// ---------------------------------------------------------------- exact-file pins
+/** Pick one exact file for a candidate, from every version the project has (any Minecraft version or loader). */
+function PinPicker({ c, onChange, onClose }: { c: PCandidate; onChange: (c: PCandidate) => void; onClose: () => void }) {
+  const [list, setList] = useState<AnyVersion[] | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
+  const [filter, setFilter] = useState("");
+  const [force, setForce] = useState(!!c.forcePin);
+  useEffect(() => { if (c.modrinthId) api.allVersions(c.modrinthId).then(setList, setError); }, [c.modrinthId]);
+  const shown = (list ?? []).filter((v) => !filter || `${v.versionNumber} ${v.gameVersions.join(" ")} ${v.loaders.join(" ")}`.toLowerCase().includes(filter.toLowerCase()));
+  return (
+    <Modal title={`Pin a file: ${c.name}`} width={620} onClose={onClose}>
+      <div className="stack-lg">
+        <p className="muted" style={{ margin: 0 }}>The payload then always adds exactly this file. Limit the candidate to the versions/loaders it's meant for (the chips and field on its row), and add an unpinned fallback below it for everything else.</p>
+        <label className="mc-check">
+          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+          <span>Use it even if it isn't built for the pack's version or loader <span className="muted">(for files another mod needs exactly, like Voxy's for Roxy)</span></span>
+        </label>
+        {!c.modrinthId ? <Notice title="Pinning needs the Modrinth copy">This candidate is only linked on CurseForge.</Notice> : (
+          <>
+            <input className="mc-input" placeholder="Filter: version, Minecraft version, loader" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter versions" />
+            {error && <ErrorNotice error={error} />}
+            {!list && !error && <p className="muted">Loading every version…</p>}
+            <ul className="entry-list" style={{ maxHeight: 340, overflow: "auto" }}>
+              {shown.slice(0, 200).map((v) => (
+                <li key={v.versionId} className={`entry${c.pinVersion === v.versionId ? " entry--sel" : ""}`}
+                  onClick={() => { onChange({ ...c, pinVersion: v.versionId, pinNumber: v.versionNumber, forcePin: force || undefined }); onClose(); }}>
+                  <span className="grow"><strong>{v.versionNumber}</strong> <span className="muted">· {v.versionType}</span></span>
+                  <span className="muted" style={{ fontSize: 12 }}>{v.gameVersions.slice(-3).join(", ")} · {v.loaders.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          {c.pinVersion && <Button onClick={() => { onChange({ ...c, pinVersion: undefined, pinNumber: undefined, forcePin: undefined }); onClose(); }}>Remove the pin</Button>}
+          {c.pinVersion && force !== !!c.forcePin && <Button variant="primary" onClick={() => { onChange({ ...c, forcePin: force || undefined }); onClose(); }}>Save</Button>}
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ---------------------------------------------------------------- slot editor
 function CandidateRow({ c, index, count, onChange, onMove, onRemove }: {
   c: PCandidate; index: number; count: number; onChange: (c: PCandidate) => void; onMove: (d: -1 | 1) => void; onRemove: () => void;
@@ -88,6 +131,7 @@ function CandidateRow({ c, index, count, onChange, onMove, onRemove }: {
   const loaders = c.loaders ?? [];
   const [versions, setVersions] = useState((c.mcVersions ?? []).join(", "));
   const toggle = (l: Loader) => onChange({ ...c, loaders: loaders.includes(l) ? loaders.filter((x) => x !== l) : [...loaders, l] });
+  const [pinning, setPinning] = useState(false);
   return (
     <li className="cand">
       <span className="muted cand__n" title={index === 0 ? "Tried first" : "Fallback"}>{index + 1}.</span>
@@ -97,6 +141,11 @@ function CandidateRow({ c, index, count, onChange, onMove, onRemove }: {
         {c.modrinthId && <span className="mini-badge mr">MR</span>}{c.curseforgeId != null && <span className="mini-badge cf">CF</span>}
         {c.kind && c.kind !== "mod" && <span className="mini-badge">{c.kind}</span>}
       </span>
+      <button type="button" className="chip" aria-pressed={!!c.pinVersion} onClick={() => setPinning(true)}
+        title={c.pinVersion ? `Always this exact file${c.forcePin ? ", even when it isn't built for the pack" : ""}` : "Pin an exact file"}>
+        {c.pinVersion ? `= ${c.pinNumber ?? c.pinVersion}${c.forcePin ? " (forced)" : ""}` : "Pin…"}
+      </button>
+      {pinning && <PinPicker c={c} onChange={onChange} onClose={() => setPinning(false)} />}
       <span className="row" style={{ gap: 2 }} title="Only use on these loaders (none ticked = any)">
         {LOADERS.map((l) => (
           <button key={l.id} type="button" className="chip" aria-pressed={loaders.includes(l.id)} onClick={() => toggle(l.id)}>{l.label}</button>

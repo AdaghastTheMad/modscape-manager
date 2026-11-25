@@ -181,7 +181,7 @@ function FileControl({ pack, entryKey, file, onPin }: { pack: Pack; entryKey: st
       {file ? (
         <p style={{ margin: 0 }}>
           <strong>{file.versionNumber}</strong> <span className={file.versionType === "release" ? "muted" : "warn"}>({file.versionType})</span>
-          <span className="muted"> · {fmtDate(file.datePublished)} · {file.pinned ? "pinned" : pack.channelPolicy === "newest" ? "newest build" : file.versionType === "release" ? "newest release" : `no release yet, newest ${file.versionType}`}</span>
+          <span className="muted"> · {fmtDate(file.datePublished)} · {file.pinned ? (e.pinForced ? "pinned on purpose: made for another version/loader (another mod needs exactly this file)" : "pinned") : pack.channelPolicy === "newest" ? "newest build" : file.versionType === "release" ? "newest release" : `no release yet, newest ${file.versionType}`}</span>
         </p>
       ) : <p className="muted" style={{ margin: 0 }}>No file chosen yet.</p>}
       <div className="row">

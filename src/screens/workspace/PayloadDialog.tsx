@@ -114,6 +114,7 @@ export function PayloadDialog({ pack, payloadId, onClose, onApply, title }: {
                     <span className="grow">
                       <strong>{r.status === "add" ? r.name : r.label}</strong>
                       {r.status === "add" && r.fallback && <span className="muted"> · fallback for {r.label}</span>}
+                      {r.status === "add" && r.pinNumber && <span className="muted"> · exactly {r.pinNumber}{r.forcePin ? " (made for another version/loader, on purpose)" : ""}</span>}
                       {r.status === "inPack" && <span className="muted"> · already in the pack{r.name !== r.label ? ` as ${r.name}` : ""}</span>}
                       {r.status === "noBuild" && <span className="err"> · no build for {pack.mcVersion} (tried {r.tried.join(", ")})</span>}
                       {r.status === "add" && r.kind !== "mod" && <span className="mini-badge">{kindLabel(r.kind)}</span>}

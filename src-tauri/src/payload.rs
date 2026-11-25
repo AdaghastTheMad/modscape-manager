@@ -47,9 +47,19 @@ pub struct Candidate {
     /// An entry ending in "*" is a prefix (e.g. "26.*").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mc_versions: Vec<String>,
-    /// Mods only for now; resource packs etc. arrive in milestone 11.
+    /// Mod, resource pack, shader or datapack.
     #[serde(default)]
     pub kind: EntryKind,
+    /// Use exactly this file (Modrinth version id / CurseForge file id).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_version: Option<String>,
+    /// Its version number, for display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_number: Option<String>,
+    /// Use the pinned file even if it isn't built for the pack's version or
+    /// loader (another mod needs that exact file).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force_pin: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -254,7 +264,21 @@ pub enum SlotStatus {
     InPack { key: String, name: String },
     /// Will be added: catalog id of the winning candidate (+ its other-site id).
     #[serde(rename_all = "camelCase")]
-    Add { project_id: String, alt_id: Option<String>, name: String, icon_url: Option<String>, fallback: bool, kind: EntryKind },
+    Add {
+        project_id: String,
+        alt_id: Option<String>,
+        name: String,
+        icon_url: Option<String>,
+        fallback: bool,
+        kind: EntryKind,
+        /// The candidate's exact file, when it pins one.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pin_version: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pin_number: Option<String>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        force_pin: bool,
+    },
     /// No candidate fits this version/loader or has a build.
     #[serde(rename_all = "camelCase")]
     NoBuild { tried: Vec<String> },
@@ -368,11 +392,44 @@ async fn resolve_slot(pack: &Pack, s: &Slot, cat: &dyn Catalog) -> SlotStatus {
         }
         tried.push(c.name.clone());
         let ids = c.ids(prefer);
+        // A pinned candidate means exactly that file (on whichever site it's from).
+        if let Some(pin) = &c.pin_version {
+            let pid = if pin.chars().all(|ch| ch.is_ascii_digit()) { c.curseforge_id.map(curseforge::cf_id) } else { c.modrinth_id.clone() };
+            let cat_pin = if pin.chars().all(|ch| ch.is_ascii_digit()) { curseforge::cf_id(pin.parse().unwrap_or(0)) } else { pin.clone() };
+            if let (Some(pid), Ok(Some(v))) = (pid, cat.version(&cat_pin, false).await) {
+                let fits = v.supports_kind(&pack.mc_version, pack.loader, c.kind) || (resolve::kind_may_fall_back(c.kind) && v.fits_kind(pack.loader, c.kind));
+                if v.project_id == pid && (c.force_pin || fits) {
+                    let alt = ids.iter().find(|x| **x != pid).cloned();
+                    return SlotStatus::Add {
+                        project_id: pid,
+                        alt_id: alt,
+                        name: c.name.clone(),
+                        icon_url: c.icon_url.clone(),
+                        fallback: i > 0,
+                        kind: c.kind,
+                        pin_version: Some(cat_pin),
+                        pin_number: Some(c.pin_number.clone().unwrap_or(v.version_number)),
+                        force_pin: c.force_pin && !fits,
+                    };
+                }
+            }
+            continue;
+        }
         for (j, pid) in ids.iter().enumerate() {
             let vs = cat.versions_of(pid, &pack.mc_version, pack.loader, c.kind, false).await.unwrap_or_default();
             if resolve::select_version_kind(&vs, &pack.mc_version, pack.loader, c.kind, pack.channel_policy).is_some() {
                 let alt = ids.iter().enumerate().find(|(x, _)| *x != j).map(|(_, id)| id.clone());
-                return SlotStatus::Add { project_id: pid.clone(), alt_id: alt, name: c.name.clone(), icon_url: c.icon_url.clone(), fallback: i > 0, kind: c.kind };
+                return SlotStatus::Add {
+                    project_id: pid.clone(),
+                    alt_id: alt,
+                    name: c.name.clone(),
+                    icon_url: c.icon_url.clone(),
+                    fallback: i > 0,
+                    kind: c.kind,
+                    pin_version: None,
+                    pin_number: None,
+                    force_pin: false,
+                };
             }
         }
     }
@@ -523,6 +580,9 @@ pub fn from_entries(pack: &Pack, keys: &[String], name: &str, now: &str) -> AppR
                 curseforge_id: e.mod_ref.curseforge_id,
                 icon_url: e.display.icon_url.clone(),
                 kind: e.kind,
+                // A pin made on purpose (Voxy for Roxy) travels with the payload.
+                pin_version: e.pin_forced.then(|| e.file_id.clone()).flatten(),
+                force_pin: e.pin_forced && e.file_id.is_some(),
                 ..Default::default()
             }],
         }));
@@ -563,12 +623,72 @@ pub fn seed_starters(db: &crate::store::Db, now: &str, force: bool) -> AppResult
         if db.get_payload(&p.id)?.is_none() {
             p.created_at = now.into();
             p.updated_at = now.into();
+            db.meta_set(&format!("starter_fp:{}", p.id), &starter_fingerprint(&p))?;
             db.put_payload(&p)?;
             added += 1;
         }
     }
     db.meta_set("starters_seeded", now)?;
     Ok(added)
+}
+
+/// What the app shipped for a starter: name, description and contents.
+fn starter_fingerprint(p: &Payload) -> String {
+    serde_json::json!({ "name": p.name, "description": p.description, "content": content_of(p) }).to_string()
+}
+
+/// Brings the starter payloads you haven't edited up to the ones this build
+/// ships (new mods, fixes, renames). Each update is a new payload version, so
+/// packs that used it show "updated → Review". New starters are added. Starters
+/// you edited, or deleted, are left alone. Runs at every start; returns the
+/// names it added or updated.
+pub fn sync_starters(db: &crate::store::Db, now: &str) -> AppResult<Vec<String>> {
+    if db.meta_get("starters_seeded")?.is_none() {
+        return Ok(vec![]); // first run: seed_starters adds them fresh
+    }
+    let mut updated = vec![];
+    for shipped in starters() {
+        let key = format!("starter_fp:{}", shipped.id);
+        let Some(mut have) = db.get_payload(&shipped.id)? else {
+            // Never seen here before: a starter this build added. (Seen before means you deleted it;
+            // "Restore starter payloads" brings those back.)
+            if db.meta_get(&key)?.is_none() {
+                let mut p = shipped.clone();
+                p.created_at = now.into();
+                p.updated_at = now.into();
+                db.put_payload(&p)?;
+                db.meta_set(&key, &starter_fingerprint(&p))?;
+                updated.push(p.name);
+            }
+            continue;
+        };
+        let new_fp = starter_fingerprint(&shipped);
+        let untouched = match db.meta_get(&key)? {
+            Some(fp) => fp == starter_fingerprint(&have),
+            // Installs from before this existed: untouched if it was never saved after seeding.
+            None => have.starter && have.created_at == have.updated_at,
+        };
+        if !untouched || starter_fingerprint(&have) == new_fp {
+            if untouched {
+                db.meta_set(&key, &new_fp)?;
+            }
+            continue;
+        }
+        have.name = shipped.name.clone();
+        have.description = shipped.description.clone();
+        let content_changed = content_of(&have) != content_of(&shipped);
+        have.items = shipped.items.clone();
+        have.includes = shipped.includes.clone();
+        if content_changed {
+            have.version += 1;
+        }
+        have.updated_at = now.into();
+        have.created_at = now.into(); // keeps "never saved by you" true for the fallback check
+        db.put_payload(&have)?;
+        db.meta_set(&key, &new_fp)?;
+        updated.push(have.name.clone());
+    }
+    Ok(updated)
 }
 
 /// Payloads this pack applied whose stored version is newer.
@@ -714,6 +834,63 @@ mod tests {
         assert!(!by["Sodium"].suggest_remove && by["Sodium"].needed_by.contains(&"Iris Shaders".to_string()), "Iris still needs Sodium");
         assert!(!by["Mod Menu"].suggest_remove && by["Mod Menu"].other_payloads == vec!["Other"]);
         assert!(!r.removed.iter().any(|x| x.key == iris), "Iris was never from this payload");
+    }
+
+    #[test]
+    fn shipped_starter_updates_reach_untouched_starters_only() {
+        let db = crate::store::Db::memory();
+        seed_starters(&db, "t0", false).unwrap();
+        // Pretend an older build shipped different contents for two starters.
+        let mut perf = db.get_payload("starter-performance").unwrap().unwrap();
+        perf.items.truncate(2);
+        perf.name = "Performance core".into();
+        db.put_payload(&perf).unwrap();
+        db.meta_set("starter_fp:starter-performance", &starter_fingerprint(&perf)).unwrap();
+        let mut maps = db.get_payload("starter-maps").unwrap().unwrap();
+        maps.items.clear();
+        db.put_payload(&maps).unwrap();
+        db.meta_set("starter_fp:starter-maps", &starter_fingerprint(&maps)).unwrap();
+        // ...and you edited the maps one since.
+        maps.description = "mine".into();
+        db.put_payload(&maps).unwrap();
+        let v = perf.version;
+        let updated = sync_starters(&db, "t1").unwrap();
+        assert_eq!(updated, vec!["Optimization and Functionality Core".to_string()]);
+        let now = db.get_payload("starter-performance").unwrap().unwrap();
+        assert_eq!(now.version, v + 1, "content changed: packs see an update");
+        assert_eq!(db.get_payload("starter-maps").unwrap().unwrap().description, "mine", "your edits are kept");
+        assert!(sync_starters(&db, "t2").unwrap().is_empty(), "nothing left to do");
+        // A starter this build ships that the install has never seen is added; one you deleted isn't.
+        db.delete_payload("starter-shaders").unwrap();
+        db.delete_payload("starter-server").unwrap();
+        db.with_meta_removed_for_test("starter_fp:starter-server");
+        assert_eq!(sync_starters(&db, "t3").unwrap(), vec!["Server Analysis".to_string()]);
+        assert!(db.get_payload("starter-shaders").unwrap().is_none(), "deleted stays deleted");
+    }
+
+    #[test]
+    fn pinned_candidates_and_forced_pins() {
+        // Iris's Fabric 1.21.1 file stands in for "Voxy 0.2.16-beta for Roxy": pinned, on a NeoForge pack.
+        let cat = crate::resolve::tests::KindCat::new();
+        let mut c = cand("Iris", crate::resolve::IRIS);
+        c.pin_version = Some("irisF".into());
+        let pack = pack_for("1.21.1", Loader::Neoforge);
+        let p = payload("p", vec![PayloadItem::Mod(slot("s", vec![c.clone()]))], vec![]);
+        let r = block(plan(&pack, &p, &HashMap::new(), &HashMap::new(), &cat));
+        assert!(matches!(r.rows[0].status, SlotStatus::NoBuild { .. }), "not forced: the file doesn't fit, so no build");
+        c.force_pin = true;
+        let p = payload("p", vec![PayloadItem::Mod(slot("s", vec![c]))], vec![]);
+        let r = block(plan(&pack, &p, &HashMap::new(), &HashMap::new(), &cat));
+        let SlotStatus::Add { pin_version, force_pin, .. } = &r.rows[0].status else { panic!("{:?}", r.rows[0].status) };
+        assert_eq!((pin_version.as_deref(), *force_pin), (Some("irisF"), true));
+        // Added that way, the entry keeps the pin and the checks accept it.
+        let plan = block(crate::resolve::plan_add_kind(&pack, crate::resolve::IRIS, EntryKind::Mod, Some("irisF"), true, None, None, &cat, false, "t", crate::resolve::tests::counter())).unwrap();
+        let e = &plan.additions[0].entry;
+        assert_eq!((e.file_id.as_deref(), e.pin_forced), (Some("irisF"), true));
+        let mut pk = pack.clone();
+        crate::resolve::tests::apply(&mut pk, plan);
+        let a = block(crate::resolve::analyze(&pk, &cat, false, 0));
+        assert!(!a.issues.iter().any(|i| i.kind == "pin_mismatch" || i.kind == "no_build"), "{:?}", a.issues.iter().map(|i| i.kind).collect::<Vec<_>>());
     }
 
     #[test]

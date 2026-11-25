@@ -39,7 +39,7 @@ Modscape Manager is a desktop app for *designing* modpacks. You search Modrinth 
 1. **New pack:** name it, pick the Minecraft version and loader; the loader version fills in for you.
 2. **Search** on the left and press **+** (or Enter). Required dependencies are added and marked *pulled in by*.
 3. Watch the **checks** at the top of the pack. Most problems come with a one-click fix.
-4. Optional: drop in a **payload** (a reusable bundle such as *Performance core*), or attach an **override template** with your configs.
+4. Optional: drop in a **payload** (a reusable bundle such as *Optimization and Functionality Core*), or attach an **override template** with your configs.
 5. **Export…** → `.mrpack` → in Prism: *Add Instance → Import* → pick the file.
 
 > [!TIP]
@@ -140,7 +140,7 @@ Three panes: **Browse** on the left, **the pack** in the middle (as a list, a gr
 
 ## Payloads
 
-Payloads are reusable bundles you drop into any pack. They store *projects*, not files, so one payload works on every Minecraft version and loader. A set of starter payloads comes with the app.
+Payloads are reusable bundles you drop into any pack. They store *projects*, not files, so one payload works on every Minecraft version and loader. A set of starter payloads comes with the app, and new builds update the ones you haven't edited. Want to add your own to the starters? See [docs/PAYLOADS.md](docs/PAYLOADS.md).
 
 <img src="docs/images/payloads.png" alt="The payload editor">
 
@@ -149,7 +149,7 @@ Payloads are reusable bundles you drop into any pack. They store *projects*, not
 | 1 | **Library** | Your payloads and the starters. *Restore starter payloads* brings back any you deleted. **Import…** reads a payload JSON someone shared. |
 | 2 | **New** | Start an empty payload (or save one from a pack with **Save as payload…**, which leaves dependencies out). |
 | 3 | **A slot** | One mod, with ↑↓ to reorder. |
-| 4 | **Candidates** | Fallbacks in order: the first that fits the pack and has a build wins. Each can be limited to loaders (e.g. C2ME's Fabric and NeoForge projects) and to Minecraft versions (`26.*` matches a prefix). Resource packs, shaders and datapacks work as candidates too. |
+| 4 | **Candidates** | Fallbacks in order: the first that fits the pack and has a build wins. Each can be limited to loaders (e.g. C2ME's Fabric and NeoForge projects) and to Minecraft versions (`26.*` matches a prefix), and **Pin…** can fix it to one exact file, even one built for another loader when a mod needs exactly that (Roxy runs Voxy's 1.21.11 Fabric file on NeoForge 1.21.1). Resource packs, shaders and datapacks work as candidates too. |
 | 5 | **+ Choice** | A *one of* item (e.g. JEI or EMI or REI), with mods common to every option. Payloads can also include other payloads. |
 | 6 | **Save** | Payloads change only when you save (leaving with unsaved edits asks first). Content changes bump the version, and packs that used it get an *updated → Review* notice. |
 
@@ -225,7 +225,7 @@ scripts/build.sh        # tests, then installers in installers/  (.dmg on macOS,
 - **Linux:** [docs/LINUX.md](docs/LINUX.md) walks through it, or run `scripts/linux-build.sh` on the Linux machine.
 - **Tests:** `cd src-tauri && cargo test` (resolver tests run on recorded API responses), `pnpm typecheck`.
 - **Stack:** Tauri 2 (Rust core: every network call, SQLite storage, the resolver and exporters) with a React + TypeScript UI; the graph uses Cytoscape.js.
-- `scripts/make-icon.py` draws the app icon; `scripts/capture-screens.mjs` regenerates these screenshots.
+- `scripts/starters.py` manages the shipped starter payloads ([docs/PAYLOADS.md](docs/PAYLOADS.md)); `scripts/make-icon.py` draws the app icon; `scripts/capture-screens.mjs` regenerates these screenshots.
 
 ## Privacy and network
 

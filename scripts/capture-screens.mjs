@@ -232,7 +232,7 @@ const SCENES = {
     $.click('.mc-modal button', 'Cancel'); await $.sleep(400);
     $.click('[role=tablist][aria-label=Browse] [role=tab]', 'Search'); await $.sleep(400);
     $.click('[role=tab]', 'Payloads'); await $.sleep(1500);
-    $.click('.entry', 'Performance'); await $.sleep(1200);
+    $.click('.entry', 'Optimization'); await $.sleep(1200);
     $.mark(1, $.find('.entry-list'));
     $.mark(2, $.find('button', 'New'));
     $.mark(3, $.find('.slot-ed'));

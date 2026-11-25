@@ -220,6 +220,11 @@ impl Db {
         self.with(|c| c.execute("DELETE FROM meta WHERE key = 'starters_seeded'", []))?;
         Ok(n)
     }
+    #[cfg(test)]
+    pub fn with_meta_removed_for_test(&self, key: &str) {
+        self.with(|c| c.execute("DELETE FROM meta WHERE key = ?1", [key]).map(|_| ())).unwrap();
+    }
+
     pub fn reset_links(&self) -> AppResult<()> {
         self.with(|c| c.execute("DELETE FROM meta WHERE key = 'manual_links'", []).map(|_| ()))
     }

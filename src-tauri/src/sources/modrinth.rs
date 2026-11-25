@@ -409,6 +409,15 @@ impl Catalog for Modrinth {
         }
     }
 
+    async fn all_versions(&self, project_id: &str, force: bool) -> AppResult<Vec<Version>> {
+        let req = self.fetcher.http().get(format!("{BASE}/v2/project/{}/version", urlencode_segment(project_id))).query(&[("include_changelog", "false")]);
+        match self.fetcher.fetch_json::<Vec<Version>>(req, DAY, force, NAME, status_help(NAME)).await {
+            Ok((v, _)) => Ok(v),
+            Err(AppError::Api { status: 404, .. }) => Ok(vec![]),
+            Err(e) => Err(e),
+        }
+    }
+
     async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: crate::model::EntryKind, force: bool) -> AppResult<Vec<Version>> {
         if kind == crate::model::EntryKind::Mod {
             return self.versions(project_id, mc, loader, force).await;

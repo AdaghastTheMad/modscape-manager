@@ -230,7 +230,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
     const failed: string[] = [];
     for (const r of a.add) {
       try {
-        const plan = await api.planAdd(p, r.projectId, null, null, r.altId, r.kind);
+        const plan = await api.planAdd(p, r.projectId, r.pinVersion ?? null, null, r.altId, r.kind, !!r.forcePin);
         plans.push(plan);
         p = applyPlan(p, plan);
       } catch (e) { failed.push(`${r.name}: ${(e as AppError).message}`); }
@@ -486,7 +486,7 @@ export function Workspace({ packId, onClose, onOpen }: { packId: string; onClose
 
   // ---- fixes and small edits
   const pin = useCallback((key: string, versionId: string | null) => {
-    update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: { ...p.entries[key], fileId: versionId ?? undefined } } } : p),
+    update((p) => (p.entries[key] ? { ...p, entries: { ...p.entries, [key]: { ...p.entries[key], fileId: versionId ?? undefined, pinForced: undefined } } } : p),
       { label: `${versionId ? "pin" : "unpin"} ${latest.current?.entries[key]?.display.name ?? "a mod"}` });
   }, [update]);
   const applyFix = useCallback((f: Fix) => {

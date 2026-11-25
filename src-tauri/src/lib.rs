@@ -340,9 +340,10 @@ async fn plan_add(
     alt_id: Option<String>,
     added_at: String,
     kind: Option<model::EntryKind>,
+    force_pin: Option<bool>,
 ) -> AppResult<resolve::AddPlan> {
     let kind = kind.unwrap_or_default();
-    resolve::plan_add_kind(&pack, &project_id, kind, pin_version.as_deref(), for_key.as_deref(), alt_id.as_deref(), &state.catalog(), false, &added_at, || uuid::Uuid::new_v4().to_string()).await
+    resolve::plan_add_kind(&pack, &project_id, kind, pin_version.as_deref(), force_pin.unwrap_or(false), for_key.as_deref(), alt_id.as_deref(), &state.catalog(), false, &added_at, || uuid::Uuid::new_v4().to_string()).await
 }
 
 #[tauri::command]
@@ -356,6 +357,33 @@ async fn entry_versions(state: St<'_>, project_id: String, mc_version: String, l
     let kind = kind.unwrap_or_default();
     let vs = state.catalog().versions_of(&project_id, &mc_version, loader, kind, false).await?;
     Ok(resolve::compatible_files_kind(&vs, &mc_version, loader, kind))
+}
+
+/// Every file of a project (any version/loader), newest first, for pinning a payload candidate.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnyVersion {
+    version_id: String,
+    version_number: String,
+    version_type: String,
+    game_versions: Vec<String>,
+    loaders: Vec<String>,
+    date: String,
+}
+
+pub async fn all_versions_impl(st: &AppState, project_id: &str) -> AppResult<Vec<AnyVersion>> {
+    use resolve::Catalog;
+    let mut vs = st.catalog().all_versions(project_id, false).await?;
+    vs.sort_by(|a, b| b.date_published.cmp(&a.date_published));
+    Ok(vs
+        .into_iter()
+        .map(|v| AnyVersion { version_id: v.id, version_number: v.version_number, version_type: v.version_type, game_versions: v.game_versions, loaders: v.loaders, date: v.date_published })
+        .collect())
+}
+
+#[tauri::command]
+async fn all_versions(state: St<'_>, project_id: String) -> AppResult<Vec<AnyVersion>> {
+    all_versions_impl(&state, &project_id).await
 }
 
 // ---------------- payloads ----------------
@@ -864,6 +892,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let db = Db::open(&dir.join("planner.db")).map_err(|e| e.to_string())?;
             payload::seed_starters(&db, &store::now_iso(), false).map_err(|e| e.to_string())?;
+            payload::sync_starters(&db, &store::now_iso()).map_err(|e| e.to_string())?;
             app.manage(AppState::new(db).with_templates(dir.join("templates")));
             Ok(())
         })
@@ -901,6 +930,7 @@ pub fn run() {
             plan_add,
             plan_removal,
             entry_versions,
+            all_versions,
             list_packs,
             get_pack,
             save_pack,

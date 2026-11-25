@@ -27,6 +27,8 @@ export interface EntryDisplay {
 export interface PackEntry {
   ref: ModRef;
   fileId?: string;
+  /** The pin is on purpose although the file isn't built for this pack (e.g. Voxy's file for Roxy). */
+  pinForced?: boolean;
   kind: EntryKind;
   reason: Reason;
   pulledInBy: string[];

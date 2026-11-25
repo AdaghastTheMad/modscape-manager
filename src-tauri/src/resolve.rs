@@ -296,6 +296,10 @@ pub trait Catalog: Send + Sync {
     async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: EntryKind, force: bool) -> AppResult<Vec<Version>> {
         if kind == EntryKind::Mod { self.versions(project_id, mc, loader, force).await } else { Ok(vec![]) }
     }
+    /// Every build, any version or loader (for pinning a payload candidate). Modrinth only.
+    async fn all_versions(&self, _project_id: &str, _force: bool) -> AppResult<Vec<Version>> {
+        Ok(vec![])
+    }
 }
 
 /// Routes `cf:` ids to CurseForge and everything else to Modrinth.
@@ -320,6 +324,9 @@ impl Catalog for Multi<'_> {
     }
     async fn versions_of(&self, project_id: &str, mc: &str, loader: Loader, kind: EntryKind, force: bool) -> AppResult<Vec<Version>> {
         self.pick(project_id).versions_of(project_id, mc, loader, kind, force).await
+    }
+    async fn all_versions(&self, project_id: &str, force: bool) -> AppResult<Vec<Version>> {
+        self.pick(project_id).all_versions(project_id, force).await
     }
     async fn projects(&self, ids: &[String], force: bool) -> AppResult<Vec<ProjectInfo>> {
         let (cf, mr): (Vec<String>, Vec<String>) = ids.iter().cloned().partition(|i| i.starts_with(curseforge::PREFIX));
@@ -500,13 +507,14 @@ struct Selected {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn select_for(cat: &dyn Catalog, project_id: &str, pin: Option<&str>, mc: &str, loader: Loader, kind: EntryKind, policy: ChannelPolicy, force: bool) -> AppResult<Selected> {
+async fn select_for(cat: &dyn Catalog, project_id: &str, pin: Option<&str>, forced: bool, mc: &str, loader: Loader, kind: EntryKind, policy: ChannelPolicy, force: bool) -> AppResult<Selected> {
     if let Some(vid) = pin {
         return Ok(match cat.version(vid, force).await? {
             None => Selected { version: None, exact: true, pinned: true, pin_problem: Some("missing") },
             Some(v) if v.project_id != project_id => Selected { version: None, exact: true, pinned: true, pin_problem: Some("missing") },
             Some(v) => {
-                let exact = v.supports_kind(mc, loader, kind);
+                // A forced pin is on purpose: never a mismatch, never a fallback warning.
+                let exact = forced || v.supports_kind(mc, loader, kind);
                 let ok = exact || (kind_may_fall_back(kind) && v.fits_kind(loader, kind));
                 Selected { version: Some(v), exact, pinned: true, pin_problem: (!ok).then_some("mismatch") }
             }
@@ -622,8 +630,8 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
     }
     let selected: Vec<(String, String, AppResult<Selected>)> = stream::iter(targets)
         .map(|(k, pid, pin)| async move {
-            let kind = pack.entries[&k].kind;
-            let r = select_for(cat, &pid, pin.as_deref(), mc, loader, kind, pack.channel_policy, force).await;
+            let (kind, forced) = (pack.entries[&k].kind, pack.entries[&k].pin_forced);
+            let r = select_for(cat, &pid, pin.as_deref(), forced, mc, loader, kind, pack.channel_policy, force).await;
             (k, pid, r)
         })
         .buffer_unordered(PARALLEL)
@@ -694,6 +702,11 @@ pub async fn analyze(pack: &Pack, cat: &dyn Catalog, force: bool, now: i64) -> A
                     None => {}
                     Some(mut v) => {
                         rep.file = Some(v.file_info(sel.pinned));
+                        // A file forced in from another loader declares that loader's dependencies;
+                        // whatever needs it (Roxy for Voxy) supplies them, so they aren't checked here.
+                        if e.pin_forced && !v.supports_kind(mc, loader, e.kind) {
+                            v.dependencies.clear();
+                        }
                         if !sel.exact {
                             issues.push(Issue {
                                 id: format!("version_fallback:{key}"),
@@ -1123,7 +1136,7 @@ pub async fn plan_add(
     now_iso: &str,
     new_key: impl FnMut() -> String,
 ) -> AppResult<AddPlan> {
-    plan_add_kind(pack, project_id, EntryKind::Mod, pin_version, for_parent, alt_id, cat, force, now_iso, new_key).await
+    plan_add_kind(pack, project_id, EntryKind::Mod, pin_version, false, for_parent, alt_id, cat, force, now_iso, new_key).await
 }
 
 /// `plan_add` for any content kind. The root is added as `kind`; its
@@ -1135,6 +1148,8 @@ pub async fn plan_add_kind(
     project_id: &str,
     kind: EntryKind,
     pin_version: Option<&str>,
+    // Keep the root's pin even if that file isn't for this version/loader.
+    force_pin: bool,
     for_parent: Option<&str>,
     alt_id: Option<&str>,
     cat: &dyn Catalog,
@@ -1220,7 +1235,8 @@ pub async fn plan_add_kind(
         let mut version = None;
         if let Some(vid) = &pin {
             if let Some(v) = cat.version(vid, force).await? {
-                if v.project_id == pid && (v.supports_kind(mc, loader, node_kind) || (kind_may_fall_back(node_kind) && v.fits_kind(loader, node_kind))) {
+                let forced = force_pin && nodes[idx].is_root;
+                if v.project_id == pid && (forced || v.supports_kind(mc, loader, node_kind) || (kind_may_fall_back(node_kind) && v.fits_kind(loader, node_kind))) {
                     nodes[idx].file_id = Some(v.id.clone());
                     version = Some(v);
                 }
@@ -1242,6 +1258,11 @@ pub async fn plan_add_kind(
             no_build.push(pid.clone());
             continue;
         };
+        if nodes[idx].is_root && force_pin && !v.supports_kind(mc, loader, node_kind) {
+            // Forced file for another loader: its dependencies are that loader's, so none are added.
+            notes.push(format!("Using {} exactly as pinned (made for {}); its own dependencies are for that loader and aren't added.", v.version_number, v.loaders.join("/")));
+            v.dependencies.clear();
+        }
         resolve_dep_projects(cat, &mut v.dependencies, force, &mut vcache).await;
         for d in &v.dependencies {
             let Some(dpid) = d.project_id.clone() else { continue };
@@ -1297,6 +1318,7 @@ pub async fn plan_add_kind(
                 mod_ref: mod_ref_for(&n.project_id, if n.is_root { alt_id } else { None }),
                 // Pins are stored without the `cf:` prefix.
                 file_id: n.file_id.as_ref().map(|f| f.strip_prefix(curseforge::PREFIX).unwrap_or(f).to_string()),
+                pin_forced: n.is_root && force_pin && n.file_id.is_some(),
                 kind: n.kind,
                 reason: if n.is_root && for_parent.is_none() { Reason::User } else { Reason::Dependency },
                 pulled_in_by: n.parents.iter().filter(|p| !ghosts.contains(*p)).cloned().collect(),
@@ -1575,7 +1597,7 @@ pub(crate) mod tests {
     fn adding_a_datapack_brings_paxi_and_its_deps() {
         let c = KindCat::new();
         let pack = pack_for("1.21.1", Loader::Fabric);
-        let plan = block(plan_add_kind(&pack, "dpTerra", EntryKind::Datapack, None, None, None, &c, false, "t", counter())).unwrap();
+        let plan = block(plan_add_kind(&pack, "dpTerra", EntryKind::Datapack, None, false, None, None, &c, false, "t", counter())).unwrap();
         let got: Vec<(String, EntryKind, Reason)> = plan.additions.iter().map(|a| (a.entry.display.name.clone(), a.entry.kind, a.entry.reason)).collect();
         assert_eq!(got, vec![
             ("Terralith".to_string(), EntryKind::Datapack, Reason::User),
@@ -1590,7 +1612,7 @@ pub(crate) mod tests {
         let mut pack = pack_for("1.21.1", Loader::Fabric);
         let mut keys = counter();
         for (pid, kind) in [("shComp", EntryKind::Shader), ("rpFresh", EntryKind::Resourcepack)] {
-            let plan = block(plan_add_kind(&pack, pid, kind, None, None, None, &c, false, "t", &mut keys)).unwrap();
+            let plan = block(plan_add_kind(&pack, pid, kind, None, false, None, None, &c, false, "t", &mut keys)).unwrap();
             apply(&mut pack, plan);
         }
         let a = block(analyze(&pack, &c, false, 0));
@@ -1601,7 +1623,7 @@ pub(crate) mod tests {
         let fix = a.issues.iter().find(|i| i.kind == "shader_loader_missing").unwrap().fix.clone();
         assert!(matches!(fix, Some(Fix::AddProject { ref project_id, .. }) if project_id == IRIS));
         // Terralith-style datapack that also has a mod build: warn, offer to switch.
-        let plan = block(plan_add_kind(&pack, "dpTerra", EntryKind::Datapack, None, None, None, &c, false, "t", &mut keys)).unwrap();
+        let plan = block(plan_add_kind(&pack, "dpTerra", EntryKind::Datapack, None, false, None, None, &c, false, "t", &mut keys)).unwrap();
         apply(&mut pack, plan);
         let a = block(analyze(&pack, &c, false, 0));
         let i = a.issues.iter().find(|i| i.kind == "datapack_has_mod").expect("datapack_has_mod");
