@@ -989,7 +989,9 @@ pub async fn scan_folder_impl(st: &AppState, pack: &Pack, dir: &std::path::Path)
     let index: scan::JarIndex = jars.iter().filter_map(|(n, b)| by_sha.get(&scan::sha1_hex(b)).map(|k| (n.clone(), k.clone()))).collect();
     let mut report = scan::analyse(pack, &jars, &index);
     // Show paths under your home folder as ~/… (shorter, and nothing personal in screenshots).
-    let shown = std::env::var_os("HOME").and_then(|h| mods.strip_prefix(h).ok().map(|r| format!("~/{}", r.display()))).unwrap_or_else(|| mods.display().to_string());
+    // Home-relative, so the folder shown doesn't carry the account name (USERPROFILE on Windows).
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    let shown = home.and_then(|h| mods.strip_prefix(h).ok().map(|r| format!("~{}{}", std::path::MAIN_SEPARATOR, r.display()))).unwrap_or_else(|| mods.display().to_string());
     report.notes.push(format!("Read {} jars from {shown} (nothing was changed).", jars.len()));
     let unmatched = jars.len() - index.len();
     if unmatched > 0 {

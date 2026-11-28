@@ -1,5 +1,5 @@
 //! CurseForge API key storage in the OS keychain (macOS Keychain, Linux
-//! Secret Service). The key never leaves the Rust core and is never written
+//! Secret Service, Windows Credential Manager). The key never leaves the Rust core and is never written
 //! to disk in plaintext: if no keychain is available we report why and the
 //! app runs in Modrinth-only mode.
 
@@ -33,6 +33,8 @@ pub fn backend_name() -> &'static str {
         "macOS Keychain"
     } else if cfg!(target_os = "linux") {
         "Secret Service (GNOME Keyring / KWallet)"
+    } else if cfg!(target_os = "windows") {
+        "Windows Credential Manager"
     } else {
         "system keychain"
     }
@@ -58,6 +60,13 @@ fn fix_guide() -> String {
          make sure the \"login\" keychain is unlocked (File → Unlock Keychain), and try again. \
          If an old \"modscape-manager\" entry exists, deleting it and saving the key again \
          resets the permission.\n\nUntil then the app works in Modrinth-only mode."
+            .into()
+    } else if cfg!(target_os = "windows") {
+        "Windows refused access to the Credential Manager. Open Control Panel → Credential \
+         Manager → Windows Credentials; if an old \"modscape-manager\" entry is listed, remove \
+         it and save the key here again. Signing out and back in to Windows also helps if the \
+         vault is locked.\n\nUntil then the app works in Modrinth-only mode. Your key is never \
+         saved in a plain file."
             .into()
     } else {
         "The system keychain isn't available. The app works in Modrinth-only mode.".into()

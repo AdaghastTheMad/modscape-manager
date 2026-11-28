@@ -6,7 +6,7 @@ Owner: **AdaghastTheMad**. In all project content (README, credits, metadata, ch
 
 ## What it is
 
-A standalone **Tauri 2 desktop app** (Linux Mint + macOS, no Windows) for planning Minecraft modpacks as **metadata only**. Pick mods, see their dependency graph, export a pack file a launcher installs. **The app never downloads a mod jar.**
+A standalone **Tauri 2 desktop app** (Linux Mint + macOS; Windows in the `windows` fork, see below) for planning Minecraft modpacks as **metadata only**. Pick mods, see their dependency graph, export a pack file a launcher installs. **The app never downloads a mod jar.**
 
 - Minecraft **1.21.1** and **26.1.2** first-class; any version Modrinth/CurseForge lists is selectable (open version picker).
 - Loaders: NeoForge, Fabric, Forge, Quilt — one per pack.
@@ -186,6 +186,7 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 - Never enter the owner's CurseForge key or any credential on their behalf; the owner pastes it into the settings screen.
 
 ## Decisions log
+- Nov 28, 2026: **Windows fork** (owner, off-schedule, for a friend on Windows). Branch `windows` → its own GitHub repo. Changes kept small and additive so it can merge back: keyring `windows-native` (Credential Manager), Windows keychain help text, `USERPROFILE` for home-relative paths, `icons/icon.ico`, `nsis` bundle target (`installMode: currentUser`, WebView2 bootstrapper). Built only by `.github/workflows/windows.yml` on `windows-latest` (typecheck + cargo test + `tauri build --bundles nsis`); no local cross-compile toolchain (would need system installs). Unsigned: SmartScreen → More info → Run anyway. Guide: docs/WINDOWS.md. Not yet tried on a real Windows PC.
 - Nov 24, 2026 (release): **renamed Modpack Planner → Modscape Manager** (owner). New identifier `io.github.adaghastthemad.modscapemanager` (fresh data folder), keychain service `modscape-manager`, User-Agent `modscape-manager/<version>`, file formats `modscape-manager-project` / `-payload` (the old `modpack-planner-*` formats still open). The design doc keeps its original title. Repo: `github.com/AdaghastTheMad/modscape-manager`, public, MIT.
 - Nov 23, 2026: all items in the design doc's "Decided" list.
 - Nov 24, 2026 (M6 review): env rule fixed (never optional); side notes removed from checks; keepable dropped dependencies in Duplicate to version; Live Scan added as M14. Cross-check of linked mods' deps against their other-site copy: approved as a per-pack toggle, **off by default** (saves CurseForge API calls).

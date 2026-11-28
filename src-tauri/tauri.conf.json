@@ -29,7 +29,8 @@
     "targets": [
       "deb",
       "appimage",
-      "dmg"
+      "dmg",
+      "nsis"
     ],
     "category": "Utility",
     "shortDescription": "Plan Minecraft modpacks without downloading mods",
@@ -39,8 +40,17 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico"
     ],
-    "license": "MIT"
+    "license": "MIT",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
   }
 }

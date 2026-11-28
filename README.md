@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Plan Minecraft modpacks as metadata. Pick mods, see how they depend on each other, and export a pack your launcher installs.</b><br>
-  <sub>macOS · Linux · Minecraft 1.21.1 and 26.1.2 first-class, any version Modrinth or CurseForge lists · NeoForge · Fabric · Forge · Quilt</sub>
+  <sub>macOS · Linux · Windows · Minecraft 1.21.1 and 26.1.2 first-class, any version Modrinth or CurseForge lists · NeoForge · Fabric · Forge · Quilt</sub>
 </p>
 
 ---
@@ -32,6 +32,7 @@ Modscape Manager is a desktop app for *designing* modpacks. You search Modrinth 
 |---|---|
 | **macOS** (Apple Silicon) | Open `Modscape Manager_<version>_aarch64.dmg` and drag the app to Applications. The app isn't signed with an Apple Developer ID, so the first time, **right-click it → Open → Open**. After that it opens normally. |
 | **Linux** (Mint / Ubuntu) | `sudo apt install ./Modscape-Manager_<version>_amd64.deb`, or make the `.AppImage` executable and run it. |
+| **Windows** (10 / 11, x64) | Run `Modscape Manager_<version>_x64-setup.exe`. It installs for your user only (no admin). The installer isn't code-signed, so SmartScreen may warn: **More info → Run anyway**. See [docs/WINDOWS.md](docs/WINDOWS.md). |
 | **From source** | See [Building from source](#building-from-source). Linux has its own step-by-step guide: [docs/LINUX.md](docs/LINUX.md). |
 
 ## Quick start
@@ -196,7 +197,7 @@ Your own reusable `config/`, `kubejs/` and similar folders. They're plain folder
 
 <img src="docs/images/shortcuts.png" width="520" alt="The keyboard shortcut sheet">
 
-macOS uses ⌘, Linux uses Ctrl. Backspace or Delete removes the selected mod.
+macOS uses ⌘, Linux and Windows use Ctrl. Backspace or Delete removes the selected mod.
 
 ---
 
@@ -240,6 +241,7 @@ scripts/build.sh        # tests, then installers in installers/  (.dmg on macOS,
 ```
 
 - **Linux:** [docs/LINUX.md](docs/LINUX.md) walks through it, or run `scripts/linux-build.sh` on the Linux machine.
+- **Windows:** built by GitHub Actions (`.github/workflows/windows.yml`) on a Windows runner; see [docs/WINDOWS.md](docs/WINDOWS.md).
 - **Tests:** `cd src-tauri && cargo test` (resolver tests run on recorded API responses), `pnpm typecheck`.
 - **Stack:** Tauri 2 (Rust core: every network call, SQLite storage, the resolver and exporters) with a React + TypeScript UI; the graph uses Cytoscape.js.
 - `scripts/starters.py` manages the shipped starter payloads ([docs/PAYLOADS.md](docs/PAYLOADS.md)); `scripts/make-icon.py` draws the app icon; `scripts/capture-screens.mjs` regenerates these screenshots.
@@ -247,7 +249,7 @@ scripts/build.sh        # tests, then installers in installers/  (.dmg on macOS,
 ## Privacy and network
 
 - The Rust core makes every request and refuses any host not on its allow-list: `api.modrinth.com`, `cdn.modrinth.com`, `api.curseforge.com`, `media.forgecdn.net` (icons), and the loaders' version lists (`meta.fabricmc.net`, `meta.quiltmc.org`, `maven.neoforged.net`, `maven.minecraftforge.net`). The interface itself can't reach the network. No analytics, no crash reporting, no update pings.
-- The CurseForge key is stored in the macOS Keychain or the Linux Secret Service. If there's no keychain, the app runs Modrinth-only rather than store it in a file.
+- The CurseForge key is stored in the macOS Keychain, the Linux Secret Service or the Windows Credential Manager. If there's no keychain, the app runs Modrinth-only rather than store it in a file.
 - Exports carry no personal information (the pack author field is left empty).
 - Data lives in your OS app-data folder (`io.github.adaghastthemad.modscapemanager`). **Settings → Danger zone** resets any part of it.
 
