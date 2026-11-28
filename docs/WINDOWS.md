@@ -28,7 +28,7 @@ Shortcuts use **Ctrl** (Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo, Ctrl+1–4 swi
 
 Windows installers are built by GitHub Actions on a Windows runner: [`.github/workflows/windows.yml`](../.github/workflows/windows.yml). It runs the typecheck and the Rust tests, then `pnpm tauri build --bundles nsis`.
 
-- **Every push to `master`** builds an installer. Download it from the run's *Artifacts* section.
+- **Every push to `master` or the `windows` branch** builds an installer. Download it from the run's *Artifacts* section.
 - **By hand:** Actions → *Windows build* → *Run workflow*.
 - **A release:** push a tag (`git tag v0.1.0 && git push origin v0.1.0`). The installer is attached to that tag's GitHub release.
 

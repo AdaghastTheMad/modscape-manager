@@ -1,13 +1,13 @@
 # Builds the Windows installer (NSIS .exe) on a GitHub-hosted Windows runner.
 # Runs the same checks as scripts/build.sh first: typecheck and the Rust tests.
 #
-# Trigger: push to master, by hand (Actions → Windows build → Run workflow),
+# Trigger: push to master or the windows branch, by hand (Actions → Windows build → Run workflow),
 # or a v* tag, which also attaches the installer to that tag's GitHub release.
 name: Windows build
 
 on:
   push:
-    branches: [master]
+    branches: [master, windows]
     tags: ["v*"]
   workflow_dispatch:
 
