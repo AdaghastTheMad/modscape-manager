@@ -5,9 +5,9 @@ What's done, what's broken, and what's next, in plain language. Claude Code upda
 ## Current state
 
 - **Version:** 0.1.0. Public on GitHub, MIT.
-- **Done:** all 14 milestones in CLAUDE.md, from the skeleton through Live Scan. Tested on macOS.
-- **Not done yet:** the Linux build has never been run on Linux Mint (`scripts/linux-build.sh`, `docs/LINUX.md`).
-- **Next step:** read the README as a stranger would and list every place you'd get stuck or stop reading. That list is the start of the traction plan.
+- **Done:** all 14 milestones in CLAUDE.md, from the skeleton through Live Scan. Tested on macOS and built successfully as a .deb on Linux.
+- **Not Done yet:** .AppImage file has not been tested on Linux, Windows build has yet to be created or tested, the app lacks a search function for the mods within a modpack, and a new request has come in from private reviews to add an "orphan config cleaner" function that can scan the config folder of a modpack against its config folder, and clear out any config files/folders not assignable to the namespace of the installed mod jars.
+- **Next Step:** read the README as a stranger would and list every place you'd get stuck or stop reading. That list is the start of the traction plan. This will parallelize with Claude Code building a Windows build of the app for 3rd party testing.
 
 ## Log
 
