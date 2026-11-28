@@ -170,6 +170,13 @@ Stop after each milestone and wait for AdaghastTheMad's review before starting t
 - **Dev bridge (dev only, never shipped):** `cd src-tauri && cargo run --example dev_bridge` serves the real core on `127.0.0.1:1421`; point the Vite page's `window.__TAURI_INTERNALS__.invoke` at it (snippet in `examples/dev_bridge.rs`) to exercise the UI against real Rust in a plain browser. Packs live in memory; no keychain (CurseForge is deliberately off: `disable_keychain`) and no dialogs.
 - React state updaters must stay pure (StrictMode runs them twice): generate ids/timestamps before calling `update()`.
 
+## Progress log (`PROGRESS.md`)
+A weekly check-in reads `PROGRESS.md`, so the owner never has to look back over his own work. Keep it current:
+- At the end of every work session, or when AdaghastTheMad says he's stopping, rewrite **Current state** (version, done, broken or untested, next step) and add a dated entry at the top of **Log**: what changed, what's broken or untested, and the next step.
+- The next step is one concrete first action (e.g. "test the export button on Mac"), not a goal. It doubles as his parking note.
+- Plain language, short. Never rewrite old log entries. Name the owner only as AdaghastTheMad.
+- Commit it with the session's work, and push.
+
 ## Rules (from "Instructions for Claude Code" + owner's hard rules)
 - **Mods first, and reliable.** Milestones 1–5 are the core. Don't start milestone 11 (other content types) until resolver tests pass and the M5 Prism round-trip works for both versions. Other content types may reuse the core but must never change its behaviour for mods.
 - **Never touch the owner's own Prism data** — never read, write or launch `~/.local/share/PrismLauncher`, the Flatpak equivalent, or `~/Library/Application Support/PrismLauncher`. Test only in an isolated Prism data dir inside the project (`test-env/prism/`, git-ignored) via Prism's portable build or `--dir`, managed by `scripts/test-prism.sh` (create / start / `--clean` wipes). Instance import is tested on fixture instances built in that test copy.
